@@ -443,6 +443,7 @@ void IMU_Init(void) {
 }
 
 // Function to configure the MPU-6050 for the fastest mode with the low-pass filter
+// Function to configure the MPU-6050 for the fastest mode with an optional low-pass filter
 void IMU_Config_Fast_Mode(void) {
     uint8_t data[2];
 
@@ -454,8 +455,8 @@ void IMU_Config_Fast_Mode(void) {
     }
 
     // Step 2: Configure the low-pass filter (DLPF)
-    // Set the DLPF to the fastest mode (Low-pass filter disabled)
-    data[0] = 0x00;  // DLPF_CFG = 0 (highest data rate)
+    // Optional: Set the DLPF to a moderate speed (256Hz cutoff, if you prefer smoothing)
+    data[0] = 0x01;  // DLPF_CFG = 0x01 (256Hz cutoff filter)
     if (I2C_Write_DMA(IMU_I2C_ADDRESS, CONFIG_REG, data, 1) != HAL_OK) {
         debug_print("Error: Failed to set DLPF\r\n");
         return;
@@ -468,8 +469,8 @@ void IMU_Config_Fast_Mode(void) {
         return;
     }
 
-    // Step 4: Configure gyroscope range to ±2000°/s (fastest mode)
-    data[0] = 0x18;  // FS_SEL = 0x03 (±2000°/s range)
+    // Step 4: Configure gyroscope range to ±500°/s (fastest mode)
+    data[0] = 0x08;  // FS_SEL = 0x01 (±500°/s range for gyroscope)
     if (I2C_Write_DMA(IMU_I2C_ADDRESS, GYRO_CONFIG_REG, data, 1) != HAL_OK) {
         debug_print("Error: Failed to set gyroscope range\r\n");
         return;
@@ -483,17 +484,17 @@ void IMU_Config_Fast_Mode(void) {
     }
 
     // Print confirmation
-    debug_print("MPU-6050 configured for fastest mode with low-pass filter disabled\r\n");
+    debug_print("MPU-6050 configured for fastest mode with low-pass filter enabled (256Hz cutoff)\r\n");
 }
 
 // Function to read accelerometer and gyroscope data
 void IMU_Read_Accel_Gyro(void) {
-    char str[64];
+    char str[128];  // Increased buffer size for better data formatting
 
     // Start I2C read with DMA for accelerometer and gyroscope data (14 bytes)
     I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3B, imu_data, 14);
 
-    // Wait for DMA read to complete with timeout logic
+    // Wait for DMA transfer to complete with timeout logic
     uint32_t wait_start_time = get_millis();
     uint32_t timeout_duration = 1000;  // Timeout duration for reading (in ms)
 
@@ -514,22 +515,17 @@ void IMU_Read_Accel_Gyro(void) {
     int16_t gyro_x = (int16_t)((imu_data[8] << 8) | imu_data[9]);
     int16_t gyro_y = (int16_t)((imu_data[10] << 8) | imu_data[11]);
     int16_t gyro_z = (int16_t)((imu_data[12] << 8) | imu_data[13]);
-/*
-    // Print accelerometer data with padding to clear leftovers
-    sprintf(str, "\033[1;1HAccel X: %d, Y: %d, Z: %d       ", accel_x, accel_y, accel_z);
-    debug_print(str);
 
-    // Print gyroscope data with padding to clear leftovers
-    sprintf(str, "\033[2;1HGyro X: %d, Y: %d, Z: %d       ", gyro_x, gyro_y, gyro_z);
-    debug_print(str);*/
-
-    // Print accelerometer data with padding to clear leftovers
+    // Prepare data string for accelerometer
     sprintf(str, "AccelX:%d, Y:%d, Z:%d", accel_x, accel_y, accel_z);
-    debug_print(str);
+    debug_print(str);  // Send accelerometer data to PC
 
-    // Print gyroscope data with padding to clear leftovers
+    // Optional: Add delay to throttle the data output rate, prevent overwhelming PC
+    // HAL_Delay(10);  // Add 10ms delay between each transmission to limit data rate
+
+    // Prepare data string for gyroscope
     sprintf(str, "GyroX:%d, Y:%d, Z:%d", gyro_x, gyro_y, gyro_z);
-    debug_print(str);
+    debug_print(str);  // Send gyroscope data to PC
 }
 
 void debug_print(char* str){
