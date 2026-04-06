@@ -17,48 +17,23 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
+#include <Q12.h>
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
 
-#include <stdlib.h>
-#include <stdio.h>
-#include <string.h>
 /* USER CODE END Includes */
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN PTD */
-#define UART_TX_BUFFER_SIZE 1024
-#define UART_RX_BUFFER_SIZE 32
-#define I2C_TX_BUFFER_SIZE 32
-#define I2C_RX_BUFFER_SIZE 32
-
-#define IMU_I2C_ADDRESS 0xD0 // Example I2C address of the IMU (MPU6050) - 7-bit: 0x68
-// Registers for configuration
-#define PWR_MGMT_1_REG  0x6B
-#define CONFIG_REG      0x1A
-#define GYRO_CONFIG_REG 0x1B
-#define ACCEL_CONFIG_REG 0x1C
-#define SMPLRT_DIV_REG  0x19
 
 // Global variables to track time
+volatile uint32_t micros;  // Millisecond counter
 volatile uint32_t millis;  // Millisecond counter
 volatile uint32_t timeout_flag;  // Timeout flag for time-based events
-
-char uart1_txBuffer[UART_TX_BUFFER_SIZE];  // Transmit buffer
-char uart1_rxBuffer[UART_RX_BUFFER_SIZE];  // Receive buffer (if needed)
-
-volatile uint16_t txWriteIndex = 0;
-volatile uint16_t txReadIndex = 0;
-volatile uint8_t txBusy = 0;
-char str_tmp[UART_TX_BUFFER_SIZE] = {0};
-
-uint8_t i2c1_txBuffer[I2C_TX_BUFFER_SIZE];
-uint8_t i2c1_rxBuffer[I2C_RX_BUFFER_SIZE];
-static uint8_t dma_read_complete = 0;  // Flag to indicate DMA read completion
-
-uint8_t imu_data[14];  // Array to store accelerometer and gyroscope data (12 bytes)
+volatile uint32_t currenttime;
+volatile q12_t deltatime;
 
 /* USER CODE END PTD */
 
@@ -73,15 +48,6 @@ uint8_t imu_data[14];  // Array to store accelerometer and gyroscope data (12 by
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
-I2C_HandleTypeDef hi2c1;
-DMA_HandleTypeDef hdma_i2c1_tx;
-DMA_HandleTypeDef hdma_i2c1_rx;
-
-TIM_HandleTypeDef htim6;
-
-UART_HandleTypeDef huart1;
-DMA_HandleTypeDef hdma_usart1_tx;
-DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -96,14 +62,11 @@ static void MX_I2C1_Init(void);
 static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 uint32_t get_millis(void);
+
+
 void delay(uint32_t ms);
-void USART1_Transmit_DMA(char *data, uint16_t size);
 int timeout(uint32_t start_time, uint32_t timeout_period);
-HAL_StatusTypeDef I2C_Write_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size);
-HAL_StatusTypeDef I2C_Read_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size);
-void debug_print(char* str);
-void IMU_Init(void);
-void IMU_Read_Accel_Gyro(void);
+
 /* USER CODE END PFP */
 
 /* Private user code ---------------------------------------------------------*/
@@ -148,6 +111,7 @@ int main(void)
   HAL_TIM_Base_Start_IT(&htim6);
   debug_print("Wizard booted!!!\r\n");
   IMU_Init();
+  //deltatime = get_deltatime();
   /* USER CODE END 2 */
 
   /* Infinite loop */
@@ -157,10 +121,13 @@ int main(void)
     /* USER CODE END WHILE */
 
     /* USER CODE BEGIN 3 */
+
+
 	  //sprintf(str_tmp, "ACCEL_X:0\r\n");
 	  //USART1_Transmit_DMA(str_tmp, strlen(str_tmp));
 
 	  IMU_Read_Accel_Gyro();
+	  IMU_compute_rotation();
 	  delay(10);
   }
   /* USER CODE END 3 */
@@ -314,7 +281,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 460800;
+  huart1.Init.BaudRate = 115200;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;
@@ -379,259 +346,23 @@ static void MX_GPIO_Init(void)
 }
 
 /* USER CODE BEGIN 4 */
-// Function to initialize the IMU
-// Function to initialize the IMU
-void IMU_Init(void) {
-    uint8_t data[2];
-    char str[64];
-
-    // Wake up MPU6050 (write 0x00 to PWR_MGMT_1 register)
-    data[0] = 0x00;   // Value to wake up the IMU
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS, 0x6B, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to wake up IMU\r\n");
-        return;  // Exit if I2C write failed
-    }
-
-    delay(100);  // Need 100ms after the reset for the IMU
-
-    uint8_t i = 0;
-    uint32_t start_time = get_millis();
-    uint32_t timeout_duration = 1000;  // Timeout after 1000 ms (1 second)
-    uint32_t retry_delay = 50;  // Delay between retry attempts (in ms)
-
-    // Loop through retry attempts for IMU detection, prioritizing retries
-    while (i < 10) {  // Max 10 attempts, retry-focused
-        // Clear the DMA completion flag before starting a new read
-        dma_read_complete = 0;
-
-        // Start I2C read with DMA (non-blocking call)
-        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x75, data, 1);
-
-        // Wait for DMA read to complete with timeout logic
-        uint32_t wait_start_time = get_millis();
-        while (!dma_read_complete) {
-            // If the overall timeout period has passed, exit with an error
-            if (get_millis() - start_time > timeout_duration) {
-                debug_print("Error: IMU not responding within timeout period\r\n");
-                return;  // Exit if overall timeout has been exceeded
-            }
-
-            // If retry delay threshold has passed, break the inner loop and retry
-            if (get_millis() - wait_start_time > retry_delay) {
-                break;  // Exit the current wait loop and try again
-            }
-        }
-
-        // Check if the IMU is responding correctly (should return 0x68)
-        if (data[0] == 0x68) {
-            debug_print("IMU FOUND!\r\n");
-            return;  // Successfully found the IMU, exit the function
-        } else {
-            sprintf(str, "IMU NOT found, attempt %d\r\n", i);
-            debug_print(str);  // Print attempt message
-        }
-
-        // Increment retry attempt
-        i++;
-
-        // Add a small delay before retrying (to prevent hammering)
-        HAL_Delay(10);  // 10 ms delay between retries (can be adjusted)
-    }
-
-    // If we exit the loop without finding the IMU, handle the timeout
-    debug_print("Error: IMU search exceeded maximum attempts\r\n");
-}
-
-// Function to configure the MPU-6050 for the fastest mode with the low-pass filter
-// Function to configure the MPU-6050 for the fastest mode with an optional low-pass filter
-void IMU_Config_Fast_Mode(void) {
-    uint8_t data[2];
-
-    // Step 1: Wake up the MPU-6050 (write 0x00 to PWR_MGMT_1 register)
-    data[0] = 0x00;  // Wake up the IMU by writing 0 to PWR_MGMT_1 register
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS, PWR_MGMT_1_REG, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to wake up IMU\r\n");
-        return;  // Exit if I2C write failed
-    }
-
-    // Step 2: Configure the low-pass filter (DLPF)
-    // Optional: Set the DLPF to a moderate speed (256Hz cutoff, if you prefer smoothing)
-    data[0] = 0x01;  // DLPF_CFG = 0x01 (256Hz cutoff filter)
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS, CONFIG_REG, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to set DLPF\r\n");
-        return;
-    }
-
-    // Step 3: Configure accelerometer range to ±16g (fastest mode)
-    data[0] = 0x18;  // AFS_SEL = 0x03 (±16g range)
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS, ACCEL_CONFIG_REG, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to set accelerometer range\r\n");
-        return;
-    }
-
-    // Step 4: Configure gyroscope range to ±500°/s (fastest mode)
-    data[0] = 0x08;  // FS_SEL = 0x01 (±500°/s range for gyroscope)
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS, GYRO_CONFIG_REG, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to set gyroscope range\r\n");
-        return;
-    }
-
-    // Step 5: Set sampling rate to the maximum (SMPLRT_DIV = 0)
-    data[0] = 0x00;  // SMPLRT_DIV = 0 for max sampling rate (1kHz)
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS, SMPLRT_DIV_REG, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to set sampling rate\r\n");
-        return;
-    }
-
-    // Print confirmation
-    debug_print("MPU-6050 configured for fastest mode with low-pass filter enabled (256Hz cutoff)\r\n");
-}
-
-// Function to read accelerometer and gyroscope data
-void IMU_Read_Accel_Gyro(void) {
-    char str[128];  // Increased buffer size for better data formatting
-
-    // Start I2C read with DMA for accelerometer and gyroscope data (14 bytes)
-    I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3B, imu_data, 14);
-
-    // Wait for DMA transfer to complete with timeout logic
-    uint32_t wait_start_time = get_millis();
-    uint32_t timeout_duration = 1000;  // Timeout duration for reading (in ms)
-
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_read_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            return;  // Exit if the read operation times out
-        }
-    }
-
-    // Process accelerometer data
-    int16_t accel_x = (int16_t)((imu_data[0] << 8) | imu_data[1]);
-    int16_t accel_y = (int16_t)((imu_data[2] << 8) | imu_data[3]);
-    int16_t accel_z = (int16_t)((imu_data[4] << 8) | imu_data[5]);
-
-    // Process gyroscope data
-    int16_t gyro_x = (int16_t)((imu_data[8] << 8) | imu_data[9]);
-    int16_t gyro_y = (int16_t)((imu_data[10] << 8) | imu_data[11]);
-    int16_t gyro_z = (int16_t)((imu_data[12] << 8) | imu_data[13]);
-
-    // Prepare data string for accelerometer
-    sprintf(str, "AccelX:%d, Y:%d, Z:%d", accel_x, accel_y, accel_z);
-    debug_print(str);  // Send accelerometer data to PC
-
-    // Optional: Add delay to throttle the data output rate, prevent overwhelming PC
-    // HAL_Delay(10);  // Add 10ms delay between each transmission to limit data rate
-
-    // Prepare data string for gyroscope
-    sprintf(str, "GyroX:%d, Y:%d, Z:%d", gyro_x, gyro_y, gyro_z);
-    debug_print(str);  // Send gyroscope data to PC
-}
-
-void debug_print(char* str){
-	USART1_Transmit_DMA(str, strlen(str));
-}
-
-void USART1_Transmit_DMA(char *data, uint16_t size) {
-    if (size == 0) return;  // Ignore empty data (nothing to transmit)
-
-    __disable_irq();  // Prevent race conditions
-
-    // Calculate available free space in the buffer
-    uint16_t freeSpace = (txReadIndex > txWriteIndex) ?
-                         (txReadIndex - txWriteIndex - 1) :  					// Buffer space available when read index is ahead of write index
-                         ((UART_TX_BUFFER_SIZE - txWriteIndex) + txReadIndex - 1);  	// Buffer space available when write index has wrapped
-
-    // Limit the size to the available free space
-    if (size > freeSpace) {
-        size = freeSpace;  // Drop excess characters
-    }
-
-    // Copy only the allowed size into the buffer
-    for (uint16_t i = 0; i < size; i++) {
-        uart1_txBuffer[txWriteIndex] = data[i];  								// Copy data into the buffer
-        txWriteIndex = (txWriteIndex + 1) % UART_TX_BUFFER_SIZE;  					// Move write pointer circularly
-    }
-
-    // Start transmission if not already in progress
-    if (!txBusy && size > 0) {
-        txBusy = 1;  // Mark that transmission is in progress
-
-        // Calculate the chunk size that needs to be sent (based on available data)
-        uint16_t chunkSize = (txWriteIndex >= txReadIndex) ?
-                             (txWriteIndex - txReadIndex) :  					// If data is in one chunk
-                             (UART_TX_BUFFER_SIZE - txReadIndex); 					// If data is split across buffer boundary
-
-        HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&uart1_txBuffer[txReadIndex], chunkSize);  	// Start DMA transmission
-    }
-
-    __enable_irq();  															// Re-enable interrupts
-}
-
-void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
-    //if (huart->Instance == USART1) {  // Check if the callback is for USART1
-        // Update txReadIndex to point to the next byte to be transmitted
-        txReadIndex = (txReadIndex + huart->TxXferSize) % UART_TX_BUFFER_SIZE;
-
-        // If there's more data to transmit, continue the transmission
-        if (txReadIndex != txWriteIndex) {
-            // Calculate the chunk size (remaining data to send)
-            uint16_t chunkSize = (txWriteIndex > txReadIndex) ?
-                                 (txWriteIndex - txReadIndex) :  // Data is in one chunk
-                                 (UART_TX_BUFFER_SIZE - txReadIndex);  // Data is split across the buffer
-
-            // Continue transmission using DMA
-            HAL_UART_Transmit_DMA(&huart1, (uint8_t*)&uart1_txBuffer[txReadIndex], chunkSize);
-        } else {
-            // No more data to transmit, transmission is complete
-            txBusy = 0;  // Mark the transmission as not busy
-        }
-    //}
-}
-
-// Function to write data to the IMU register using I2C with DMA
-HAL_StatusTypeDef I2C_Write_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size) {
-    // Send the register address followed by the data
-    HAL_StatusTypeDef status = HAL_I2C_Mem_Write_DMA(&hi2c1, devAddr, regAddr, I2C_MEMADD_SIZE_8BIT, data, size);
-    return status;
-}
-
-// Function to read data from the IMU register using I2C with DMA
-HAL_StatusTypeDef I2C_Read_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size) {
-    // Send the register address and then read the data
-    HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c1, devAddr, regAddr, I2C_MEMADD_SIZE_8BIT, data, size);
-    return status;
-}
-
-
-// DMA complete callback
-void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-	  UNUSED(hi2c);
-	// Set the flag to indicate that the DMA read operation is complete
-    dma_read_complete = 1;
-}
-
-void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
-    if (hi2c->Instance == I2C1) {
-        // Handle transmit complete (DMA transfer completed)
-    }
-}
-
-void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-    if (hi2c->Instance == I2C1) {
-        // Handle receive complete (DMA transfer completed)
-    }
-}
-
-void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
-    if (hi2c->Instance == I2C1) {
-        // Handle errors (e.g., NACK, timeouts, etc.)
-    }
-}
-
 // Function to get the current time in milliseconds
 uint32_t get_millis(void) {
     return millis;
+}
+
+// Function to get the current time in milliseconds
+q12_t get_deltatime(void)
+{
+	q12_t ret;
+    uint32_t now = get_millis();
+    uint32_t dt_ms = now - currenttime;
+    currenttime = now;
+
+    // dt_sec = dt_ms / 1000
+    // Q12: dt = dt_ms * 4096 / 1000
+    ret =q12_div( q12_from_int(dt_ms) , q12_from_int(1000));
+    return ret;
 }
 
 // Function to create a delay in milliseconds (blocking)

@@ -1,3 +1,6 @@
+"./Core/Src/COMM.o"
+"./Core/Src/IMU.o"
+"./Core/Src/Q12.o"
 "./Core/Src/main.o"
 "./Core/Src/stm32f3xx_hal_msp.o"
 "./Core/Src/stm32f3xx_it.o"

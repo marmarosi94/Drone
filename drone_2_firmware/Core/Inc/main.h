@@ -31,9 +31,20 @@ extern "C" {
 
 /* Private includes ----------------------------------------------------------*/
 /* USER CODE BEGIN Includes */
+#include <stdlib.h>
+#include <stdio.h>
+#include <string.h>
+#include "IMU.h"
+#include <math.h>
+#include "COMM.h"
+#include <Q12.h>
 // Global variables to track time
+extern volatile uint32_t micros;  // Millisecond counter
 extern volatile uint32_t millis;  // Millisecond counter
 extern volatile uint32_t timeout_flag;  // Timeout flag for time-based events
+extern volatile int32_t deltatime;
+extern volatile uint32_t currenttime;
+ q12_t get_deltatime(void);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -55,6 +66,10 @@ extern volatile uint32_t timeout_flag;  // Timeout flag for time-based events
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
+uint32_t get_millis(void);
+
+void delay(uint32_t ms);
+int timeout(uint32_t start_time, uint32_t timeout_period);
 
 /* USER CODE END EFP */
 

@@ -1,0 +1,16 @@
+../Core/Inc/Q12.h:43:21:q12_from_int	1
+../Core/Inc/Q12.h:61:21:q12_sub	1
+../Core/Inc/Q12.h:66:21:q12_mul	1
+../Core/Inc/Q12.h:71:21:q12_div	1
+../Core/Inc/Q12.h:84:21:q12_sqrt	5
+../Core/Inc/Q12.h:126:21:vec3_dot	1
+../Core/Inc/Q12.h:136:26:vec3_cross	1
+../Core/Inc/Q12.h:148:21:vec3_length	1
+../Core/Inc/Q12.h:160:26:vec3_normalize	2
+../Core/Inc/Q12.h:177:23:sqrt_i64	4
+../Core/Inc/Q12.h:190:26:quat_normalize	4
+../Core/Inc/Q12.h:216:26:quat_mul	1
+../Core/Src/IMU.c:48:6:IMU_Init	7
+../Core/Src/IMU.c:111:6:IMU_Config_Fast_Mode	17
+../Core/Src/IMU.c:203:6:IMU_Read_Accel_Gyro	3
+../Core/Src/IMU.c:233:6:IMU_compute_rotation	5
