@@ -291,7 +291,7 @@ void IMU_compute_rotation() {
         // deltatime should now be in Q16 (e.g., 0.01s = 655)
         deltatime = get_deltatime();
 
-        // Multiply rate by time (Q16 * Q16 >> 16 = Q16)
+        // Multiply rate by time
         gyro_delta.x = q16_mul(gyro_meas.x, deltatime);
         gyro_delta.y = q16_mul(gyro_meas.y, deltatime);
         gyro_delta.z = q16_mul(gyro_meas.z, deltatime);
@@ -312,16 +312,14 @@ void IMU_compute_rotation() {
         //Complementary Filter
         quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2) / 100;
         quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2) / 100;
-        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; // Fixed the "0" multiplier from your snippet
+        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; //Cannot use yaw from accelero
         quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2) / 100;
 
         // Final normalization and output
         quat_gyro = quat_normalize(quat_gyro);
         quat_flt_orientation = quat_gyro;
 
-        sprintf(str, "$%ld,%ld,%ld,%ld\r\n",
-                quat_flt_orientation.x, quat_flt_orientation.y,
-                quat_flt_orientation.z, quat_flt_orientation.w);
+        sprintf(str, "$%ld,%ld,%ld,%ld\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
         debug_print(str);
     }
 }

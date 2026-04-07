@@ -4196,7 +4196,7 @@ void IMU_compute_rotation() {
  8002746:	4b1b      	ldr	r3, [pc, #108]	@ (80027b4 <IMU_compute_rotation+0x30c>)
  8002748:	601a      	str	r2, [r3, #0]
 
-        // Multiply rate by time (Q16 * Q16 >> 16 = Q16)
+        // Multiply rate by time
         gyro_delta.x = q16_mul(gyro_meas.x, deltatime);
  800274a:	4b19      	ldr	r3, [pc, #100]	@ (80027b0 <IMU_compute_rotation+0x308>)
  800274c:	681a      	ldr	r2, [r3, #0]
@@ -4472,7 +4472,7 @@ void IMU_compute_rotation() {
  80029f2:	1ad3      	subs	r3, r2, r3
  80029f4:	4a26      	ldr	r2, [pc, #152]	@ (8002a90 <IMU_compute_rotation+0x5e8>)
  80029f6:	6053      	str	r3, [r2, #4]
-        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; // Fixed the "0" multiplier from your snippet
+        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; //Cannot use yaw from accelero
  80029f8:	4b25      	ldr	r3, [pc, #148]	@ (8002a90 <IMU_compute_rotation+0x5e8>)
  80029fa:	689b      	ldr	r3, [r3, #8]
  80029fc:	4a24      	ldr	r2, [pc, #144]	@ (8002a90 <IMU_compute_rotation+0x5e8>)
@@ -4516,7 +4516,7 @@ void IMU_compute_rotation() {
  8002a4a:	cb0f      	ldmia	r3, {r0, r1, r2, r3}
  8002a4c:	e884 000f 	stmia.w	r4, {r0, r1, r2, r3}
 
-        sprintf(str, "$%ld,%ld,%ld,%ld\r\n",
+        sprintf(str, "$%ld,%ld,%ld,%ld\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
  8002a50:	4b12      	ldr	r3, [pc, #72]	@ (8002a9c <IMU_compute_rotation+0x5f4>)
  8002a52:	6859      	ldr	r1, [r3, #4]
  8002a54:	4b11      	ldr	r3, [pc, #68]	@ (8002a9c <IMU_compute_rotation+0x5f4>)
@@ -4532,8 +4532,6 @@ void IMU_compute_rotation() {
  8002a6a:	460a      	mov	r2, r1
  8002a6c:	490c      	ldr	r1, [pc, #48]	@ (8002aa0 <IMU_compute_rotation+0x5f8>)
  8002a6e:	f006 fde9 	bl	8009644 <siprintf>
-                quat_flt_orientation.x, quat_flt_orientation.y,
-                quat_flt_orientation.z, quat_flt_orientation.w);
         debug_print(str);
  8002a72:	f107 03b4 	add.w	r3, r7, #180	@ 0xb4
  8002a76:	4618      	mov	r0, r3
