@@ -23,13 +23,13 @@
 /* USER CODE BEGIN Includes */
 #include "COMM.h"
 /* USER CODE END Includes */
-/*extern DMA_HandleTypeDef hdma_i2c1_tx;
+extern DMA_HandleTypeDef hdma_i2c1_tx;
 
 extern DMA_HandleTypeDef hdma_i2c1_rx;
 
 extern DMA_HandleTypeDef hdma_usart1_tx;
 
-extern DMA_HandleTypeDef hdma_usart1_rx;*/
+extern DMA_HandleTypeDef hdma_usart1_rx;
 
 /* Private typedef -----------------------------------------------------------*/
 /* USER CODE BEGIN TD */

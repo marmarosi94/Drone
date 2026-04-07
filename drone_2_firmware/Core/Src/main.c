@@ -17,7 +17,6 @@
   */
 /* USER CODE END Header */
 /* Includes ------------------------------------------------------------------*/
-#include <Q12.h>
 #include "main.h"
 
 /* Private includes ----------------------------------------------------------*/
@@ -33,7 +32,7 @@ volatile uint32_t micros;  // Millisecond counter
 volatile uint32_t millis;  // Millisecond counter
 volatile uint32_t timeout_flag;  // Timeout flag for time-based events
 volatile uint32_t currenttime;
-volatile q12_t deltatime;
+volatile q16_t deltatime;
 
 /* USER CODE END PTD */
 
@@ -48,6 +47,15 @@ volatile q12_t deltatime;
 /* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
+I2C_HandleTypeDef hi2c1;
+DMA_HandleTypeDef hdma_i2c1_tx;
+DMA_HandleTypeDef hdma_i2c1_rx;
+
+TIM_HandleTypeDef htim6;
+
+UART_HandleTypeDef huart1;
+DMA_HandleTypeDef hdma_usart1_tx;
+DMA_HandleTypeDef hdma_usart1_rx;
 
 /* USER CODE BEGIN PV */
 
@@ -62,8 +70,6 @@ static void MX_I2C1_Init(void);
 static void MX_TIM6_Init(void);
 /* USER CODE BEGIN PFP */
 uint32_t get_millis(void);
-
-
 void delay(uint32_t ms);
 int timeout(uint32_t start_time, uint32_t timeout_period);
 
@@ -245,7 +251,7 @@ static void MX_TIM6_Init(void)
 
   /* USER CODE END TIM6_Init 1 */
   htim6.Instance = TIM6;
-  htim6.Init.Prescaler = 6400;
+  htim6.Init.Prescaler = 6800;
   htim6.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim6.Init.Period = 10;
   htim6.Init.AutoReloadPreload = TIM_AUTORELOAD_PRELOAD_ENABLE;
@@ -351,18 +357,15 @@ uint32_t get_millis(void) {
     return millis;
 }
 
-// Function to get the current time in milliseconds
-q12_t get_deltatime(void)
+// Function to get the current delta time in seconds in Q16
+q16_t get_deltatime(void)
 {
-	q12_t ret;
     uint32_t now = get_millis();
     uint32_t dt_ms = now - currenttime;
     currenttime = now;
 
-    // dt_sec = dt_ms / 1000
-    // Q12: dt = dt_ms * 4096 / 1000
-    ret =q12_div( q12_from_int(dt_ms) , q12_from_int(1000));
-    return ret;
+    // Optimization: (dt_ms * 65536) / 1000 is the same as (dt_ms << 16) / 1000.
+    return (q16_t)(((int64_t)dt_ms << Q16_SHIFT) / 1000);
 }
 
 // Function to create a delay in milliseconds (blocking)

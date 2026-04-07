@@ -44,7 +44,8 @@ extern volatile uint32_t millis;  // Millisecond counter
 extern volatile uint32_t timeout_flag;  // Timeout flag for time-based events
 extern volatile int32_t deltatime;
 extern volatile uint32_t currenttime;
- q12_t get_deltatime(void);
+q16_t get_deltatime_millis(void);
+q16_t get_deltatime(void);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/

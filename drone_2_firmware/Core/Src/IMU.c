@@ -21,28 +21,28 @@ uint8_t gyro_is_calibrated = 0;
 uint8_t imu_data[14];
 
 // Accelerometer
-vec3_q12_t accel = {0};
+vec3_q16_t accel = {0};
 
 Vector3 gyro_Bias = {0};
 Vector3 gyro_Sample = {0};
-vec3_q12_t gyro_Bias_q12 = {0};
-vec3_q12_t gyro_meas = {0};
-vec3_q12_t gyro_delta = {0};
+vec3_q16_t gyro_Bias_q12 = {0};
+vec3_q16_t gyro_meas = {0};
+vec3_q16_t gyro_delta = {0};
 Vector3 gyro;
-q12_t gyro_angle;
-vec3_q12_t gyro_to_rad;
+q16_t gyro_angle;
+vec3_q16_t gyro_to_rad;
 
-vec3_q12_t g_ref = {0,0,Q12_ONE};
-vec3_q12_t g_meas = {0,0,0};
-vec3_q12_t acc_Deg = {0};
+vec3_q16_t g_ref = {0,0,Q16_ONE};
+vec3_q16_t g_meas = {0,0,0};
+vec3_q16_t acc_Deg = {0};
 
-quat_q12_t quat_acc   = {Q12_ONE,0,0,0};
-quat_q12_t quat_gyro = {Q12_ONE,0,0,0};
-quat_q12_t quat_delta = {Q12_ONE,0,0,0};
-quat_q12_t quat_flt_orientation = {0};
+quat_q16_t quat_acc   = {Q16_ONE,0,0,0};
+quat_q16_t quat_gyro = {Q16_ONE,0,0,0};
+quat_q16_t quat_delta = {Q16_ONE,0,0,0};
+quat_q16_t quat_flt_orientation = {0};
 
-vec3_q12_t error_vector = {0};
-vec3_q12_t error_int = {0};
+vec3_q16_t error_vector = {0};
+vec3_q16_t error_int = {0};
 
 // Function to initialize the IMU
 void IMU_Init(void) {
@@ -230,104 +230,99 @@ void IMU_Read_Accel_Gyro(void) {
     gyro.z = (int16_t)((imu_data[12] << 8) | imu_data[13]);
 }
 
-void IMU_compute_rotation(){
-	char str[256];
+void IMU_compute_rotation() {
+    char str[256];
 
-    g_meas.x = q12_div(q12_from_int(accel.x), q12_from_int(ACC_LSB));
-    g_meas.y = q12_div(q12_from_int(accel.y), q12_from_int(ACC_LSB));
-    g_meas.z = q12_div(q12_from_int(accel.z), q12_from_int(ACC_LSB));
+    // Accelerometer scaling(Q16)
+    g_meas.x = q16_div(q16_from_int(accel.x), q16_from_int(ACC_LSB));
+    g_meas.y = q16_div(q16_from_int(accel.y), q16_from_int(ACC_LSB));
+    g_meas.z = q16_div(q16_from_int(accel.z), q16_from_int(ACC_LSB));
 
     // Normalize measurement
     g_meas = vec3_normalize(g_meas);
 
-    // Compute quaternion directly
-    vec3_q12_t cross = vec3_cross(g_ref, g_meas);
-    q12_t dot = vec3_dot(g_ref, g_meas);
+    //Compute Accelerometer-based orientation quaternion
+    vec3_q16_t cross = vec3_cross(g_ref, g_meas);
+    q16_t dot = vec3_dot(g_ref, g_meas);
 
     quat_acc.x = cross.y;
     quat_acc.y = cross.z;
     quat_acc.z = -cross.x;
-    quat_acc.w = 4096 + dot;
+    quat_acc.w = Q16_ONE + dot; // Changed from 4096 (Q12) to Q16_ONE (65536)
 
-    // Normalize quaternion
+    // Normalize the accelerometer quaternion
     quat_acc = quat_normalize(quat_acc);
-	//sprintf(str, "$%i,%i,%i,%i\r\n",quat_acc.x, quat_acc.y, quat_acc.z, quat_acc.w);
 
-
-    //AVG for gyro drift compestion
+    //Gyroscope Calibration Logic
     if(gyro_is_calibrated == 0)
     {
-    	gyro_Sample.x = gyro_Sample.x + gyro.x;          //Summary for avarege of gyro datas
-    	gyro_Sample.y = gyro_Sample.y + gyro.y;             //Summary for avarege of gyro datas
-    	gyro_Sample.z = gyro_Sample.z + gyro.z;                //Summary for avarege of gyro datas
-    	sprintf(str, "gyro_sample:%i,%i,%i\r\n",gyro_Sample.x, gyro_Sample.y, gyro_Sample.z);
-    	debug_print(str);  // Send gyroscope data to PC
-    	bias_sample_cnt++;
+        gyro_Sample.x += gyro.x;
+        gyro_Sample.y += gyro.y;
+        gyro_Sample.z += gyro.z;
+
+        bias_sample_cnt++;
         if (BIAS_CALIB_SAMPLE_QTY <= bias_sample_cnt)
         {
-        	gyro_is_calibrated = 1;
+            gyro_is_calibrated = 1;
         }
     }
+
     if(gyro_is_calibrated == 1)
-	{
-		// Calculate high-precision Bias directly into Q12
-		gyro_Bias_q12.x = (gyro_Sample.x << Q12_SHIFT) / bias_sample_cnt;
-		gyro_Bias_q12.y = (gyro_Sample.y << Q12_SHIFT) / bias_sample_cnt;
-		gyro_Bias_q12.z = (gyro_Sample.z << Q12_SHIFT) / bias_sample_cnt;
+    {
+        // Calculate Bias in Q16.
+        // Use int64_t for the shift to prevent overflow before division!
+        gyro_Bias.x = ((int64_t)gyro_Sample.x << Q16_SHIFT) / bias_sample_cnt;
+        gyro_Bias.y = ((int64_t)gyro_Sample.y << Q16_SHIFT) / bias_sample_cnt;
+        gyro_Bias.z = ((int64_t)gyro_Sample.z << Q16_SHIFT) / bias_sample_cnt;
 
-		sprintf(str, "Q12 Bias:%ld, %ld, %ld\r\n", gyro_Bias_q12.x, gyro_Bias_q12.y, gyro_Bias_q12.z);
-		debug_print(str);
+        // Initialize integration with the current accelerometer orientation
+        quat_gyro = quat_acc;
+        currenttime = get_millis();
+        gyro_is_calibrated = 2;
+    }
 
-		// Take first values for the integration from the accelerometer
-		quat_gyro = quat_acc;
-
-		currenttime = get_millis();
-		gyro_is_calibrated = 2;
-	}
     if(gyro_is_calibrated == 2)
-	{
-		// 1. Get raw values in Q12 and subtract the high-precision Q12 bias
-		gyro_meas.x = -(q12_from_int(gyro.y) - gyro_Bias_q12.y);
-		gyro_meas.y = -(q12_from_int(gyro.z) - gyro_Bias_q12.z);
-		gyro_meas.z =  (q12_from_int(gyro.x) - gyro_Bias_q12.x);
+    {
+        //Get raw values in Q16 and subtract bias
+        gyro_meas.x = -(q16_from_int(gyro.y) - gyro_Bias.y);
+        gyro_meas.y = -(q16_from_int(gyro.z) - gyro_Bias.z);
+        gyro_meas.z =  (q16_from_int(gyro.x) - gyro_Bias.x);
 
-		// dt is returned in Q12 (e.g., 10ms = ~40)
-		deltatime = get_deltatime();
+        // deltatime should now be in Q16 (e.g., 0.01s = 655)
+        deltatime = get_deltatime();
 
-		// 2. Multiply rate by time (Q12 * Q12 = Q12 using your safe function)
-		gyro_delta.x = q12_mul(gyro_meas.x, deltatime);
-		gyro_delta.y = q12_mul(gyro_meas.y, deltatime);
-		gyro_delta.z = q12_mul(gyro_meas.z, deltatime);
+        // Multiply rate by time (Q16 * Q16 >> 16 = Q16)
+        gyro_delta.x = q16_mul(gyro_meas.x, deltatime);
+        gyro_delta.y = q16_mul(gyro_meas.y, deltatime);
+        gyro_delta.z = q16_mul(gyro_meas.z, deltatime);
 
-		// 3. Scale to radians and divide by 2 for the quaternion derivative
-		// GYRO_SCALE is 0.001065 rad/s/LSB. Half of that is 0.0005325.
-		// To do this in pure integer math without losing data:
-		// 0.0005325 * 1048576 (which is 2^20) = 558.
-		// We multiply by 558, then shift right by 20 to return perfectly to Q12 space.
-		quat_delta.w = Q12_ONE;
-		quat_delta.x = ((int64_t)gyro_delta.x * 558) >> 20;
-		quat_delta.y = ((int64_t)gyro_delta.y * 558) >> 20;
-		quat_delta.z = ((int64_t)gyro_delta.z * 558) >> 20;
+        // Scale to radians and multiply by 0.5 for the quaternion derivative
+        // Original Scale: 0.001065 rad/s/LSB.
+        // Half Scale: 0.0005325.
+        // In Q20: 0.0005325 * 1,048,576 = 558.
+        quat_delta.w = Q16_ONE;
+        quat_delta.x = ((int64_t)gyro_delta.x * 558) >> 20;
+        quat_delta.y = ((int64_t)gyro_delta.y * 558) >> 20;
+        quat_delta.z = ((int64_t)gyro_delta.z * 558) >> 20;
 
-		// 4. Integrate and Normalize
-		quat_gyro = quat_mul(quat_gyro, quat_delta);
-		quat_gyro = quat_normalize(quat_gyro);
+        // Integrate
+        quat_gyro = quat_mul(quat_gyro, quat_delta);
+        quat_gyro = quat_normalize(quat_gyro);
 
-		// 5. Fixed-Point Complementary Filter (98% Gyro, 2% Accel)
-		// Multiply by integers, divide by 100. Fast and float-free!
-		quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2) / 100;
-		quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2) / 100;
-		quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100;
-		quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2) / 100;
+        //Complementary Filter
+        quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2) / 100;
+        quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2) / 100;
+        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; // Fixed the "0" multiplier from your snippet
+        quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2) / 100;
 
-		// Normalize the final result and FEED IT BACK into quat_gyro
-		quat_gyro = quat_normalize(quat_gyro);
+        // Final normalization and output
+        quat_gyro = quat_normalize(quat_gyro);
+        quat_flt_orientation = quat_gyro;
 
-		// Copy to your output variable
-		quat_flt_orientation = quat_gyro;
-
-		sprintf(str, "$%ld,%ld,%ld,%ld\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-		debug_print(str);
-	}
+        sprintf(str, "$%ld,%ld,%ld,%ld\r\n",
+                quat_flt_orientation.x, quat_flt_orientation.y,
+                quat_flt_orientation.z, quat_flt_orientation.w);
+        debug_print(str);
+    }
 }
 

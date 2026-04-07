@@ -130,7 +130,7 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
     //}
 }
 
-void print_float_quat(quat_q12_t obj, uint8_t * str_float){
+void print_float_quat(quat_q16_t obj, uint8_t * str_float){
 	// Helper to get printable parts
 	int32_t x_int = obj.x / 4096;
 	int32_t y_int = obj.y / 4096;
@@ -146,7 +146,7 @@ void print_float_quat(quat_q12_t obj, uint8_t * str_float){
     debug_print(str_float);  // Send gyroscope data to PC
 }
 
-void print_float_vec3(vec3_q12_t obj, uint8_t * str_float){
+void print_float_vec3(vec3_q16_t obj, uint8_t * str_float){
 	// Helper to get printable parts
 	int32_t x_int = obj.x / 4096;
 	int32_t y_int = obj.y / 4096;

@@ -587,6 +587,7 @@ void HAL_DMA_IRQHandler(DMA_HandleTypeDef *hdma)
 
     /* Clear the half transfer complete flag */
     hdma->DmaBaseAddress->IFCR = DMA_FLAG_HT1 << hdma->ChannelIndex;
+
     /* DMA peripheral state is not updated in Half Transfer */
     /* State is updated only in Transfer Complete case */
 

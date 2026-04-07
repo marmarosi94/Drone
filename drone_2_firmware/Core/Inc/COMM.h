@@ -39,6 +39,6 @@ HAL_StatusTypeDef I2C_Write_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data,
 HAL_StatusTypeDef I2C_Read_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size);
 void USART1_Transmit_DMA(char *data, uint16_t size);
 void debug_print(char* str);
-void print_float_quat(quat_q12_t , uint8_t *);
-void print_float_vec3(vec3_q12_t , uint8_t *);
+void print_float_quat(quat_q16_t , uint8_t *);
+void print_float_vec3(vec3_q16_t , uint8_t *);
 #endif /* INC_COMM_H_ */

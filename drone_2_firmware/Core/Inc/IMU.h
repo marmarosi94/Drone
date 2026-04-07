@@ -16,7 +16,7 @@
 
 	#define GYRO_SCALE								16.4
 	#define DEG2RAD 								0.0174
-	#define BIAS_CALIB_SAMPLE_QTY 					1000
+	#define BIAS_CALIB_SAMPLE_QTY 					500
 	#define ACC_LSB 								16384							/*AFS_SEL Full Scale Range LSB Sensitivity
 																					0 ±2g 16384 LSB/g
 																					1 ±4g 8192 LSB/g
@@ -39,21 +39,21 @@
 	extern int bias_sample_cnt;
 
     // Accelerometer
-    extern vec3_q12_t accel;
-    extern vec3_q12_t g_ref;
-    extern vec3_q12_t g_meas;
-    extern quat_q12_t quat_flt_orientation;
-    extern quat_q12_t quat_acc;
+    extern vec3_q16_t accel;
+    extern vec3_q16_t g_ref;
+    extern vec3_q16_t g_meas;
+    extern quat_q16_t quat_flt_orientation;
+    extern quat_q16_t quat_acc;
     // Gyroscope
     extern Vector3 gyro;
     extern Vector3 gyro_Bias;
     extern Vector3 gyro_Sample;
-    extern vec3_q12_t gyro_meas;
-    extern quat_q12_t quat_gyro;
-    extern quat_q12_t quat_delta;
+    extern vec3_q16_t gyro_meas;
+    extern quat_q16_t quat_gyro;
+    extern quat_q16_t quat_delta;
 
-    vec3_q12_t vec_normalize(vec3_q12_t v);
-    q12_t vec_dot(vec3_q12_t a, vec3_q12_t b);
+    vec3_q16_t vec_normalize(vec3_q16_t v);
+    q16_t vec_dot(vec3_q16_t a, vec3_q16_t b);
 
     void IMU_Init(void);
     void IMU_Read_Accel_Gyro(void);
