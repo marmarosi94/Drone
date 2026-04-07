@@ -8,7 +8,7 @@
 ../Core/Inc/Q12.h:176:26:vec3_normalize	64	static
 ../Core/Inc/Q12.h:191:26:quat_normalize	200	static
 ../Core/Inc/Q12.h:223:26:quat_mul	544	static
-../Core/Src/IMU.c:48:6:IMU_Init	96	static
-../Core/Src/IMU.c:111:6:IMU_Config_Fast_Mode	24	static
-../Core/Src/IMU.c:203:6:IMU_Read_Accel_Gyro	16	static
-../Core/Src/IMU.c:233:6:IMU_compute_rotation	504	static
+../Core/Src/IMU.c:54:6:IMU_Init	96	static
+../Core/Src/IMU.c:117:6:IMU_Config_Fast_Mode	24	static
+../Core/Src/IMU.c:209:6:IMU_Read_Accel_Gyro	16	static
+../Core/Src/IMU.c:239:6:IMU_compute_rotation	544	static

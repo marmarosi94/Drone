@@ -41,8 +41,14 @@ quat_q16_t quat_gyro = {Q16_ONE,0,0,0};
 quat_q16_t quat_delta = {Q16_ONE,0,0,0};
 quat_q16_t quat_flt_orientation = {0};
 
-vec3_q16_t error_vector = {0};
-vec3_q16_t error_int = {0};
+// Mahony Gains - Tuning these is key
+// Kp (Proportional): How fast it corrects to the accelerometer (Default 2.0)
+// Ki (Integral): How fast it learns and removes gyro bias (Default 0.005)
+q16_t mahony_Kp = 131072; // 2.0 in Q16
+q16_t mahony_Ki = 458;//327;    // 0.005 in Q16 (0.005 * 65536)
+
+// Persistent integral error to compensate for drift
+vec3_q16_t mahony_error_int = {0, 0, 0};
 
 // Function to initialize the IMU
 void IMU_Init(void) {
@@ -282,45 +288,61 @@ void IMU_compute_rotation() {
     }
 
     if(gyro_is_calibrated == 2)
-    {
-        //Get raw values in Q16 and subtract bias
-        gyro_meas.x = -(q16_from_int(gyro.y) - gyro_Bias.y);
-        gyro_meas.y = -(q16_from_int(gyro.z) - gyro_Bias.z);
-        gyro_meas.z =  (q16_from_int(gyro.x) - gyro_Bias.x);
+        {
+            // --- 1. Get raw values and apply initial bias ---
+            gyro_meas.x = -(q16_from_int(gyro.y) - gyro_Bias.y);
+            gyro_meas.y = -(q16_from_int(gyro.z) - gyro_Bias.z);
+            gyro_meas.z =  (q16_from_int(gyro.x) - gyro_Bias.x);
 
-        // deltatime should now be in Q16 (e.g., 0.01s = 655)
-        deltatime = get_deltatime();
+            deltatime = get_deltatime();
 
-        // Multiply rate by time
-        gyro_delta.x = q16_mul(gyro_meas.x, deltatime);
-        gyro_delta.y = q16_mul(gyro_meas.y, deltatime);
-        gyro_delta.z = q16_mul(gyro_meas.z, deltatime);
+            // --- 2. Estimate Gravity Direction from current Quaternion ---
+            // This is the "Expected" gravity vector based on our current orientation
+            vec3_q16_t v;
+            quat_q16_t q = quat_gyro; // local copy for readability
 
-        // Scale to radians and multiply by 0.5 for the quaternion derivative
-        // Original Scale: 0.001065 rad/s/LSB.
-        // Half Scale: 0.0005325.
-        // In Q20: 0.0005325 * 1,048,576 = 558.
-        quat_delta.w = Q16_ONE;
-        quat_delta.x = ((int64_t)gyro_delta.x * 558) >> 20;
-        quat_delta.y = ((int64_t)gyro_delta.y * 558) >> 20;
-        quat_delta.z = ((int64_t)gyro_delta.z * 558) >> 20;
+            // Estimated gravity v = [2(xz - wy), 2(yz + wx), w^2 - x^2 - y^2 + z^2]
+            v.x = (q16_mul(q.x, q.z) - q16_mul(q.w, q.y)) << 1;
+            v.y = (q16_mul(q.y, q.z) + q16_mul(q.w, q.x)) << 1;
+            v.z = Q16_ONE - ((q16_mul(q.x, q.x) + q16_mul(q.y, q.y)) << 1);
 
-        // Integrate
-        quat_gyro = quat_mul(quat_gyro, quat_delta);
-        quat_gyro = quat_normalize(quat_gyro);
+            // --- 3. Compute Error (Cross product of measured and estimated gravity) ---
+            // g_meas was calculated/normalized at the top of your function
+            vec3_q16_t error = vec3_cross(g_meas, v);
 
-        //Complementary Filter
-        quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2) / 100;
-        quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2) / 100;
-        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; //Cannot use yaw from accelero
-        quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2) / 100;
+            // --- 4. Apply PI Controller ---
+            // Integral term: accumulates error to kill long-term drift
+            mahony_error_int.x += q16_mul(q16_mul(error.x, mahony_Ki), deltatime);
+            mahony_error_int.y += q16_mul(q16_mul(error.y, mahony_Ki), deltatime);
+            mahony_error_int.z += q16_mul(q16_mul(error.z, mahony_Ki), deltatime);
 
-        // Final normalization and output
-        quat_gyro = quat_normalize(quat_gyro);
-        quat_flt_orientation = quat_gyro;
+            // Apply Proportional (Kp) and Integral (Ki) corrections to the gyro rates
+            gyro_meas.x += q16_mul(error.x, mahony_Kp) + mahony_error_int.x;
+            gyro_meas.y += q16_mul(error.y, mahony_Kp) + mahony_error_int.y;
+            gyro_meas.z += q16_mul(error.z, mahony_Kp) + mahony_error_int.z;
 
-        sprintf(str, "$%ld,%ld,%ld,%ld\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-        debug_print(str);
-    }
+            // --- 5. Integrate Quaternion ---
+            // Same physics as before, but now using "corrected" gyro rates
+            gyro_delta.x = q16_mul(gyro_meas.x, deltatime);
+            gyro_delta.y = q16_mul(gyro_meas.y, deltatime);
+            gyro_delta.z = q16_mul(gyro_meas.z, deltatime);
+
+            // Scaling factor 0.5 * gyro_scale (approx 0.0005325)
+            quat_delta.w = Q16_ONE;
+            quat_delta.x = ((int64_t)gyro_delta.x * 558) >> 20;
+            quat_delta.y = ((int64_t)gyro_delta.y * 558) >> 20;
+            quat_delta.z = ((int64_t)gyro_delta.z * 558) >> 20;
+
+            quat_gyro = quat_mul(quat_gyro, quat_delta);
+            quat_gyro = quat_normalize(quat_gyro);
+
+            // Copy out
+            quat_flt_orientation = quat_gyro;
+
+            sprintf(str, "$%ld,%ld,%ld,%ld\r\n",
+                    quat_flt_orientation.x, quat_flt_orientation.y,
+                    quat_flt_orientation.z, quat_flt_orientation.w);
+            debug_print(str);
+        }
 }
 

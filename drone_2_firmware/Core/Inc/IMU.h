@@ -27,9 +27,6 @@
 	#define GYRO_RAW_TO_RAD_Q20        				279
 	#define SCALE_Q28 								142947
 
-	#define MAHONEY_KP  2048   // 0.5 in Q12 (Proportional: how fast it reacts)
-	#define MAHONEY_KI  40     // 0.01 in Q12 (Integral: how fast it "learns" bias)
-
     typedef struct {
         int32_t x;
         int32_t y;
