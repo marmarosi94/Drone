@@ -106,7 +106,7 @@ int main(void)
 	  uint32_t t1 = 0;
 	  uint32_t t2 = 0;
 	  uint32_t t3 = 0;
-	  char str[256] = {0};
+	  char str[512] = {0};
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -129,6 +129,7 @@ int main(void)
   MX_GPIO_Init();
   MX_DMA_Init();
   MX_USART1_UART_Init();
+  debug_print("Wizard booted!!!\r\n");
   MX_I2C1_Init();
   MX_TIM2_Init();
   MX_TIM3_Init();
@@ -137,10 +138,8 @@ int main(void)
   MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
   HAL_TIM_Base_Start(&htim2);
-  debug_print("Wizard booted!!!\r\n");
-  IMU_Init();
-  HAL_Delay(1000);
   esc_init();
+  IMU_Init();
 
   /* USER CODE END 2 */
 
@@ -155,6 +154,7 @@ int main(void)
 	  {
 	      t1 += LOOP1_US;
 	      IMU_compute_rotation();
+	      IMU_compute_position();
 	  }
 
 	  // 2 ms loop
@@ -162,14 +162,14 @@ int main(void)
 	  {
 	      t2 += LOOP2_US;
 	      euler_flt = quat_to_euler(quat_flt_orientation);
-	      pid_deltatime = pid_deltatime_us() / 1000000.0f;
+	      pid_deltatime = pid_deltatime_us() * 0.000001f;
 	      // PID szabályozás a pontos deltatime-mal
 	      float roll_out  = compute_pid(&pid_control_roll,  0, euler_flt.roll,  pid_deltatime);
 	      float pitch_out = compute_pid(&pid_control_pitch, 0, euler_flt.pitch, pid_deltatime);
 	      float yaw_out   = compute_pid(&pid_control_yaw,   0, euler_flt.yaw,   pid_deltatime);
 
 	      // Mixer és kimenet frissítése
-	      update_motors(MIN_THROTTLE, roll_out, pitch_out, yaw_out);
+	      update_motors(1100, roll_out, pitch_out, yaw_out);
 
 	  }
 	  // 1sec loop
@@ -179,10 +179,14 @@ int main(void)
 	      //sprintf(str, "quat_acc:%f,%f,%f,%f\r\n", quat_acc.x, quat_acc.y, quat_acc.z, quat_acc.w);
 	      //sprintf(str, "$%f,%f,%f\r\n", gyro_flt.x, gyro_flt.y, gyro_flt.z);
 	      //sprintf(str, "quat_gyro:%f,%f,%f,%f\r\n", quat_gyro.x, quat_gyro.y, quat_gyro.z, quat_gyro.w);
-	      sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-	      //sprintf(str, "$%f,%f,%f\r\n", euler_flt.pitch, euler_flt.roll, euler_flt.yaw);
-	      //sprintf(str, "$%f,%f,%f\r\n", gravity_meas.x, gravity_meas.y, gravity_meas.z);
+	      //sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
+	      sprintf(str, "$%f,%f,%f, pid dt:%f\r\n", euler_flt.pitch, euler_flt.roll, euler_flt.yaw, pid_deltatime);
 	      debug_print(str);
+	      //sprintf(str, "$%f,%f,%f\r\n", gravity_meas.x, gravity_meas.y, gravity_meas.z);
+	      sprintf(str, "%i, %i, %i, %i\r\n", m1,m2,m3,m4);
+	      debug_print(str);
+	      sprintf(str, "Posi:%f, %f, %f\r\n", position.x,position.y,position.z);
+		  debug_print(str);
 
 	  }
 
@@ -307,7 +311,7 @@ static void MX_TIM1_Init(void)
 
   /* USER CODE END TIM1_Init 1 */
   htim1.Instance = TIM1;
-  htim1.Init.Prescaler = 67;
+  htim1.Init.Prescaler = 63;
   htim1.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim1.Init.Period = 2499;
   htim1.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -385,7 +389,7 @@ static void MX_TIM3_Init(void)
 
   /* USER CODE END TIM3_Init 1 */
   htim3.Instance = TIM3;
-  htim3.Init.Prescaler = 67;
+  htim3.Init.Prescaler = 63;
   htim3.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim3.Init.Period = 2499;
   htim3.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -475,7 +479,7 @@ static void MX_TIM16_Init(void)
 
   /* USER CODE END TIM16_Init 1 */
   htim16.Instance = TIM16;
-  htim16.Init.Prescaler = 67;
+  htim16.Init.Prescaler = 63;
   htim16.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim16.Init.Period = 2499;
   htim16.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;
@@ -538,7 +542,7 @@ static void MX_TIM17_Init(void)
 
   /* USER CODE END TIM17_Init 1 */
   htim17.Instance = TIM17;
-  htim17.Init.Prescaler = 67;
+  htim17.Init.Prescaler = 63;
   htim17.Init.CounterMode = TIM_COUNTERMODE_UP;
   htim17.Init.Period = 2499;
   htim17.Init.ClockDivision = TIM_CLOCKDIVISION_DIV1;

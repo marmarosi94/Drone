@@ -19,7 +19,7 @@ Vector3 accel = {0};
 
 Vector3 gyro_Bias = {0};
 Vector3 gyro_Sample = {0};
-Vector3 gyro_meas = {0};
+Vector3 gyro_frame = {0};
 Vector3 gyro;
 Vector3 gyro_flt;
 
@@ -32,6 +32,9 @@ quaternion quat_delta = {0,0,0,1};
 quaternion quat_flt_orientation = {0};
 
 euler_float euler_flt = {0};
+
+Vector3 position = {0};
+Vector3 velocity = {0};
 
 // Function to initialize the IMU
 void IMU_Init(void) {
@@ -162,14 +165,9 @@ void IMU_Read_Accel_Gyro(void) {
 }
 void IMU_compute_rotation() {
     // --- 1. Gyorsulásmérő skálázás és TENGELYFORGATÁS (90° Z) ---
-    // Szenzor Y -> Váz X
-    // Szenzor -X -> Váz Y
-    float ax_raw = -(float)accel.x / ACC_LSB;
-    float ay_raw = (float)accel.y / ACC_LSB;
-    float az_raw = (float)accel.z / ACC_LSB;
-    gravity_meas.x = ax_raw;       // Váz X = Szenzor Y
-    gravity_meas.y = ay_raw;      // Váz Y = Szenzor -X
-    gravity_meas.z = az_raw;
+	gravity_meas.x = -(float)accel.x / ACC_LSB;
+	gravity_meas.y = (float)accel.y / ACC_LSB;
+	gravity_meas.z  = (float)accel.z / ACC_LSB;
 
     // Normalizálás
     gravity_meas = vector3_normalize(gravity_meas);
@@ -194,40 +192,99 @@ void IMU_compute_rotation() {
         gyro_Bias.x = (float) gyro_Sample.x / bias_sample_cnt;
         gyro_Bias.y = (float) gyro_Sample.y / bias_sample_cnt;
         gyro_Bias.z = (float) gyro_Sample.z / bias_sample_cnt;
-        quat_gyro = quat_acc;
         gyro_is_calibrated = 2;
     }
 
     if(gyro_is_calibrated == 2) {
             // Gyro tengelyforgatás
-            float gx_frame = -((float)gyro.x - gyro_Bias.x) * GYRO_SCALE;
-            float gy_frame =  ((float)gyro.y - gyro_Bias.y) * GYRO_SCALE;
-            float gz_frame =  ((float)gyro.z - gyro_Bias.z) * GYRO_SCALE;
+
+    		gyro_frame.x = -((float)gyro.x - gyro_Bias.x) * GYRO_SCALE;
+    		gyro_frame.y =  ((float)gyro.y - gyro_Bias.y) * GYRO_SCALE;
+    		gyro_frame.z =  ((float)gyro.z - gyro_Bias.z) * GYRO_SCALE;
+
+            // --- 3. MAHONY LOGIKA: Gravitációs vektor becslése a kvaternióból ---
+            // Kiszámoljuk, hol "kellene" lennie a gravitációnak a jelenlegi orientáció szerint
+            Vector3 gyro_g_ref= {0};
+            gyro_g_ref.x = 2.0f * (quat_gyro.x * quat_gyro.z - quat_gyro.w * quat_gyro.y);
+            gyro_g_ref.y = 2.0f * (quat_gyro.w * quat_gyro.x + quat_gyro.y * quat_gyro.z);
+            gyro_g_ref.z = quat_gyro.w * quat_gyro.w - quat_gyro.x * quat_gyro.x - quat_gyro.y * quat_gyro.y + quat_gyro.z * quat_gyro.z;
+
+            // HIBA (Error term): A mért és becsült gravitáció vektoriális szorzata (Cross product)
+            // Ez a hiba csak a Roll és Pitch tengelyeken keletkezik!
+            Vector3 error = {0};
+            error.x = (gravity_meas.y * gyro_g_ref.z - gravity_meas.z * gyro_g_ref.y);
+            error.y = (gravity_meas.z * gyro_g_ref.x - gravity_meas.x * gyro_g_ref.z);
+            error.z = (gravity_meas.x * gyro_g_ref.y - gravity_meas.y * gyro_g_ref.x);
+
+            // --- 4. KORREKCIÓ ---
+			// A giroszkóp sebességét módosítjuk a hiba és a BETA (Kp) erősítés szorzatával
+            gyro_frame.x += BETA * error.x;
+            gyro_frame.y += BETA * error.y;
+            gyro_frame.z += BETA * error.z;
 
             deltatime = imu_deltatime_us() * 0.000001f;
             float half_rad = 0.5f * DEG2RAD * deltatime;
 
             // Quat delta
 			quat_delta.w = 1.0f;
-			quat_delta.x = gx_frame * half_rad;
-			quat_delta.y = gy_frame * half_rad;
-			quat_delta.z = gz_frame * half_rad;
+			quat_delta.x = gyro_frame.x * half_rad;
+			quat_delta.y = gyro_frame.y * half_rad;
+			quat_delta.z = gyro_frame.z * half_rad;
 
             // Integrálás (Fontos a sorrend: régi * delta)
             quat_gyro = quaternion_multiply(quat_gyro, quat_delta);
-            quat_gyro = quaternion_normalize(quat_gyro);
-            // Rövid úton való korrekció (sign flip védelem)
-            float dot_product = quat_gyro.w * quat_acc.w + quat_gyro.x * quat_acc.x + quat_gyro.y * quat_acc.y;
-            float sign = (dot_product < 0) ? -1.0f : 1.0f;
-
-			quat_gyro.w = (ALPHA * quat_gyro.w) + (BETA * quat_acc.w * sign);
-			quat_gyro.x = (ALPHA * quat_gyro.x) + (BETA * quat_acc.x * sign);
-			quat_gyro.y = (ALPHA * quat_gyro.y) + (BETA * quat_acc.y * sign);
-			quat_gyro.z = quat_gyro.z; 	// YAW only gyro
-			quat_flt_orientation = quaternion_normalize(quat_gyro);
+            quat_flt_orientation = quaternion_normalize(quat_gyro);
+            //Feedback
+            quat_gyro = quat_flt_orientation;
       }
 }
+void IMU_compute_position(){
+	// --- 5. POZÍCIÓ ÉS SEBESSÉG BECSLÉS ---
 
+	    // A: Lineáris gyorsulás kinyerése Body Frame-ben
+	    // Kivonjuk a becsült gravitációt (g_ref) a mértből (meas)
+	    // Megjegyzés: Ha gravity_meas nincs visszaszorozva 1.0f-re, tedd meg itt.
+	    Vector3 lin_acc_body;
+	    lin_acc_body.x = gravity_meas.x - g_ref.x;
+	    lin_acc_body.y = gravity_meas.y - g_ref.y;
+	    lin_acc_body.z = gravity_meas.z - g_ref.z;
+
+	    // B: Átforgatás Inertial (Földi) Frame-be
+	    // A quat_flt_orientation kvaternióval forgatjuk a lin_acc_body vektort
+	    Vector3 lin_acc_earth;
+
+	    // Hatékony vektor-kvaternió forgatás (v' = q * v * q^-1)
+	    float qx = quat_flt_orientation.x, qy = quat_flt_orientation.y;
+	    float qz = quat_flt_orientation.z, qw = quat_flt_orientation.w;
+
+	    float tx = 2.0f * (qy * lin_acc_body.z - qz * lin_acc_body.y);
+	    float ty = 2.0f * (qz * lin_acc_body.x - qx * lin_acc_body.z);
+	    float tz = 2.0f * (qx * lin_acc_body.y - qy * lin_acc_body.x);
+
+	    lin_acc_earth.x = lin_acc_body.x + qw * tx + (qy * tz - qz * ty);
+	    lin_acc_earth.y = lin_acc_body.y + qw * ty + (qz * tx - qx * tz);
+	    lin_acc_earth.z = lin_acc_body.z + qw * tz + (qx * ty - qy * tx);
+
+	    // C: Integrálás sebességgé (m/s)
+	    // 9.81f szorzó kell, ha a gyorsulásmérőd 1g-ben mér
+	    float acc_m_s2 = 9.81f;
+	    float deadband = 0.05f; // Zajszűrés: csak ennél nagyobb gyorsulást integrálunk
+
+	    if (fabs(lin_acc_earth.x) > deadband) velocity.x += lin_acc_earth.x * acc_m_s2 * deltatime;
+	    else velocity.x *= 0.98f; // Damping: lassú megállás ha nincs mozgás
+
+	    if (fabs(lin_acc_earth.y) > deadband) velocity.y += lin_acc_earth.y * acc_m_s2 * deltatime;
+	    else velocity.y *= 0.98f;
+
+	    if (fabs(lin_acc_earth.z) > deadband) velocity.z += lin_acc_earth.z * acc_m_s2 * deltatime;
+	    else velocity.z *= 0.98f;
+
+	    // D: Integrálás pozícióvá (m)
+	    position.x += velocity.x * deltatime;
+	    position.y += velocity.y * deltatime;
+	    position.z += velocity.z * deltatime;
+
+}
 // Segédfüggvény a várakozáshoz, hogy ne ismételjük a kódot
 HAL_StatusTypeDef Wait_For_I2C_Complete(uint32_t timeout_ms) {
     uint32_t start = get_millis();

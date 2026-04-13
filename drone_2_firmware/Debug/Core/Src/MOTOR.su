@@ -1,6 +1,6 @@
 ../Core/Src/MOTOR.c:11:6:esc_init	8	static
-../Core/Src/MOTOR.c:29:6:set_all_motors	16	static
-../Core/Src/MOTOR.c:40:6:set_motor1_speed	16	static
-../Core/Src/MOTOR.c:47:6:set_motor2_speed	16	static
-../Core/Src/MOTOR.c:54:6:set_motor3_speed	16	static
-../Core/Src/MOTOR.c:61:6:set_motor4_speed	16	static
+../Core/Src/MOTOR.c:45:6:set_all_motors	16	static
+../Core/Src/MOTOR.c:54:6:set_motor1_speed	16	static
+../Core/Src/MOTOR.c:61:6:set_motor2_speed	16	static
+../Core/Src/MOTOR.c:68:6:set_motor3_speed	16	static
+../Core/Src/MOTOR.c:75:6:set_motor4_speed	16	static

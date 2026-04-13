@@ -28,8 +28,8 @@
 																					2 ±8g 4096 LSB/g
 																					3 ±16g 2048 LSB/g*/
 	// Complementary Filter konstansok
-	#define ALPHA 0.98f
-	#define BETA  0.02f
+	#define ALPHA 0.9f
+	#define BETA  0.1f
 	#define MAHONEY_KP  2048   // 0.5 in Q12 (Proportional: how fast it reacts)
 	#define MAHONEY_KI  40     // 0.01 in Q12 (Integral: how fast it "learns" bias)
 	#define M_RAD2DEG 57.295779513f
@@ -76,6 +76,8 @@
     euler_float quat_to_euler(quaternion );
     quaternion quaternion_multiply(quaternion q, quaternion r);
     quaternion quaternion_normalize(quaternion q);
+    extern Vector3 position;
+    extern Vector3 velocity;
 
     float vector3_dot(Vector3 a, Vector3 b);
     Vector3 vector3_cross(Vector3 a, Vector3 b);
@@ -86,6 +88,7 @@
     void IMU_Config_Fast_Mode(void);
     void IMU_Verify_Config();
     void IMU_compute_rotation();
+    void IMU_compute_position();
     void IMU_gyro_scale();
     HAL_StatusTypeDef Wait_For_I2C_Complete(uint32_t timeout_ms);
 
