@@ -5,253 +5,181 @@
  *      Author: balin
  */
 #include "IMU.h"
+#include <stdbool.h>
 
-
-#define IMU_I2C_ADDRESS 0xD0 // Example I2C address of the IMU (MPU6050) - 7-bit: 0x68
-// Registers for configuration
-#define PWR_MGMT_1_REG  0x6B
-#define CONFIG_REG      0x1A
-#define GYRO_CONFIG_REG 0x1B
-#define ACCEL_CONFIG_REG 0x1C
-#define SMPLRT_DIV_REG  0x19
 
 // ==== GLOBAL VARIABLE DEFINITIONS ====
 int bias_sample_cnt = 0;
+I2C_State_t imu_i2c_state;
 uint8_t gyro_is_calibrated = 0;
 uint8_t imu_data[14];
 
 // Accelerometer
-vec3_q16_t accel = {0};
+Vector3 accel = {0};
 
 Vector3 gyro_Bias = {0};
 Vector3 gyro_Sample = {0};
-vec3_q16_t gyro_Bias_q12 = {0};
-vec3_q16_t gyro_meas = {0};
-vec3_q16_t gyro_delta = {0};
+Vector3 gyro_meas = {0};
 Vector3 gyro;
-q16_t gyro_angle;
-vec3_q16_t gyro_to_rad;
+Vector3 gyro_flt;
 
-vec3_q16_t g_ref = {0,0,Q16_ONE};
-vec3_q16_t g_meas = {0,0,0};
-vec3_q16_t acc_Deg = {0};
+Vector3 g_ref = {0,0,1};
+Vector3 g_meas = {0,0,0};
 
-quat_q16_t quat_acc   = {Q16_ONE,0,0,0};
-quat_q16_t quat_gyro = {Q16_ONE,0,0,0};
-quat_q16_t quat_delta = {Q16_ONE,0,0,0};
-quat_q16_t quat_flt_orientation = {0};
+quaternion quat_acc   = {0,0,0,1};
+quaternion quat_gyro = {0,0,0,1};
+quaternion quat_delta = {0,0,0,1};
+quaternion quat_flt_orientation = {0};
 
-vec3_q16_t error_vector = {0};
-vec3_q16_t error_int = {0};
+euler_float euler_flt = {0};
 
 // Function to initialize the IMU
 void IMU_Init(void) {
-    uint8_t data[2];
-    char str[64];
-    // Wake up MPU6050 (write 0x00 to PWR_MGMT_1 register)
-    data[0] = 0x00;   // Value to wake up the IMU
-    if (I2C_Write_DMA(IMU_I2C_ADDRESS + 1, 0x6B, data, 1) != HAL_OK) {
-        debug_print("Error: Failed to wake up IMU\r\n");
-        return;  // Exit if I2C write failed
+    uint8_t data;
+    HAL_StatusTypeDef status;
+
+    // 1. Ébresztés (PWR_MGMT_1 regiszter 0x6B -> 0x00)
+    data = 0x00;
+    status = HAL_I2C_Mem_Write(&hi2c1, IMU_I2C_ADDRESS, 0x6B, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
+    if (status != HAL_OK) {
+        debug_print("Error: IMU Wake-up failed\r\n");
+        return;
     }
+    delay_ms(100); // Várjunk az oszcillátor stabilizálódására
 
-    delay(100);  // Need 100ms after the reset for the IMU
+    // 2. WHO_AM_I ellenőrzése (Regiszter 0x75)
+    for (uint8_t i = 0; i < 10; i++) {
+        status = HAL_I2C_Mem_Read(&hi2c1, IMU_I2C_ADDRESS, 0x75, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 
-    uint8_t i = 0;
-    uint32_t start_time = get_millis();
-    uint32_t timeout_duration = 1000;  // Timeout after 1000 ms (1 second)
-    uint32_t retry_delay = 50;  // Delay between retry attempts (in ms)
-
-    // Loop through retry attempts for IMU detection, prioritizing retries
-    while (i < 10) {  // Max 10 attempts, retry-focused
-        // Clear the DMA completion flag before starting a new read
-        dma_read_complete = 0;
-
-        // Start I2C read with DMA (non-blocking call)
-        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x75, data, 1);
-
-        // Wait for DMA read to complete with timeout logic
-        uint32_t wait_start_time = get_millis();
-        while (!dma_read_complete) {
-            // If the overall timeout period has passed, exit with an error
-            if (get_millis() - start_time > timeout_duration) {
-                debug_print("Error: IMU not responding within timeout period\r\n");
-                return;  // Exit if overall timeout has been exceeded
-            }
-
-            // If retry delay threshold has passed, break the inner loop and retry
-            if (get_millis() - wait_start_time > retry_delay) {
-                break;  // Exit the current wait loop and try again
-            }
+        if (status == HAL_OK && data == 0x68) {
+            debug_print("IMU FOUND! (0x68)\r\n");
+            IMU_Config_Fast_Mode(); // Konfiguráció futtatása
+            return;
         }
 
-        // Check if the IMU is responding correctly (should return 0x68)
-        if (data[0] == 0x68) {
-            debug_print("IMU FOUND!\r\n");
-            IMU_Config_Fast_Mode();
-            return;  // Successfully found the IMU, exit the function
-        } else {
-            sprintf(str, "IMU NOT found, attempt %d\r\n", i);
-            debug_print(str);  // Print attempt message
-        }
-
-        // Increment retry attempt
-        i++;
-
-        // Add a small delay before retrying (to prevent hammering)
-        HAL_Delay(10);  // 10 ms delay between retries (can be adjusted)
+        debug_print("IMU NOT found, retrying...\r\n");
+        delay_ms(50);
     }
-
-    // If we exit the loop without finding the IMU, handle the timeout
-    debug_print("Error: IMU search exceeded maximum attempts\r\n");
+    debug_print("Error: IMU Init failed!\r\n");
 }
 
-// Function to configure the MPU-6050 for the fastest mode with the low-pass filter
-// Function to configure the MPU-6050 for the fastest mode with an optional low-pass filter
 void IMU_Config_Fast_Mode(void) {
-    uint8_t data[2];
+    uint8_t data;
+    uint8_t i2c_addr = IMU_I2C_ADDRESS;
+    //uint8_t i2c_addr = (IMU_I2C_ADDRESS << 1);
 
-    // Wait for DMA transfer to complete with timeout logic
-    uint32_t wait_start_time = get_millis();
-    uint32_t timeout_duration = 1000;  // Timeout duration for reading (in ms)
+    // DLPF (Low Pass Filter) beállítása (Regiszter 0x1A)
+    // 0x03 = ~42Hz cutoff (kiszűri a motorvibrációt)
+    data = 0x03;
+    HAL_I2C_Mem_Write(&hi2c1, i2c_addr, 0x1A, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 
+    // Gyro Full Scale Range (Regiszter 0x1B)
+    // 0x18 = ±2000 deg/s (kell a Wizard sebességéhez)
+    data = 0x18;
+    HAL_I2C_Mem_Write(&hi2c1, i2c_addr, 0x1B, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 
-    // Step 2: Configure the low-pass filter (DLPF)
-    // Optional: Set the DLPF to a moderate speed (256Hz cutoff, if you prefer smoothing)
-    data[0] = 0x00;  // DLPF_CFG = 0x01 (256Hz cutoff filter)
-    I2C_Write_DMA(IMU_I2C_ADDRESS, CONFIG_REG, data, 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_write_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
-    // Start I2C read with DMA for accelerometer and gyroscope data (14 bytes)
-    I2C_Read_DMA(IMU_I2C_ADDRESS, CONFIG_REG, &data[1], 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_read_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
+    // Accel Full Scale Range (Regiszter 0x1C)
+    // 0x18 = ±16g
+    data = 0x18;
+    HAL_I2C_Mem_Write(&hi2c1, i2c_addr, 0x1C, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 
-    // Step 3: Configure accelerometer range to ±16g
-    data[0] = 0x18;
-    I2C_Write_DMA(IMU_I2C_ADDRESS, ACCEL_CONFIG_REG, data, 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_write_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
-    I2C_Read_DMA(IMU_I2C_ADDRESS, ACCEL_CONFIG_REG, &data[1], 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_read_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
+    // Sample Rate Divider (Regiszter 0x19)
+    // 0x00 = 1kHz belső mintavételezés
+    data = 0x00;
+    HAL_I2C_Mem_Write(&hi2c1, i2c_addr, 0x19, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 
-    // Step 4: Configure gyroscope range to ±2000°/s
-    data[0] = 0x18;  // FS_SEL = 0x01 (±2000°/s range for gyroscope)
-    I2C_Write_DMA(IMU_I2C_ADDRESS, GYRO_CONFIG_REG, data, 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_write_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
-    I2C_Read_DMA(IMU_I2C_ADDRESS, GYRO_CONFIG_REG, &data[1], 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_read_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
-
-    // Step 5: Set sampling rate to the (SMPLRT_DIV = 8)
-    data[0] = 0x08;  // SMPLRT_DIV = 8 for ampling rate (1kHz)
-    I2C_Write_DMA(IMU_I2C_ADDRESS, SMPLRT_DIV_REG, data, 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_write_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
-    I2C_Read_DMA(IMU_I2C_ADDRESS, SMPLRT_DIV_REG, &data[1], 1);
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_read_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            //return;  // Exit if the read operation times out
-        }
-    }
-
-    // Print confirmation
-    debug_print("MPU-6050 configured for fastest mode!\r\n");
+    debug_print("IMU Fast Mode configured.\r\n");
+    IMU_Verify_Config();
 }
 
+void IMU_Verify_Config(void) {
+    uint8_t read_data;
+    uint8_t i2c_addr = IMU_I2C_ADDRESS;
+    HAL_StatusTypeDef status;
+    bool error_found = false;
+
+    // Regiszterek és elvárt értékeik listája
+    struct {
+        uint8_t reg;
+        uint8_t expected;
+        char* name;
+    } config_steps[] = {
+        {0x1A, 0x03, "DLPF"},
+        {0x1B, 0x18, "Gyro Range"},
+        {0x1C, 0x18, "Accel Range"},
+        {0x19, 0x00, "Sample Rate"}
+    };
+
+    debug_print("--- IMU Verification Start ---\r\n");
+
+    for (int i = 0; i < 4; i++) {
+        status = HAL_I2C_Mem_Read(&hi2c1, i2c_addr, config_steps[i].reg, I2C_MEMADD_SIZE_8BIT, &read_data, 1, 100);
+
+        if (status != HAL_OK) {
+        	sprintf(str,"Error: Could not read %s (0x%02X)\r\n", config_steps[i].name, config_steps[i].reg);
+            debug_print(str);
+            error_found = true;
+            continue;
+        }
+
+        if (read_data == config_steps[i].expected) {
+        	sprintf(str,"OK: %s set to 0x%02X\r\n", config_steps[i].name, read_data);
+        	 debug_print(str);
+        } else {
+        	sprintf(str,"FAIL: %s is 0x%02X (Expected: 0x%02X)\r\n", config_steps[i].name, read_data, config_steps[i].expected);
+            error_found = true;
+            debug_print(str);
+        }
+    }
+
+    if (!error_found) {
+        debug_print("IMU Configuration Verified Successfully!\r\n");
+    } else {
+        debug_print("IMU Configuration FAILED!\r\n");
+    }
+
+    debug_print("--- IMU Verification End ---\r\n");
+}
 
 // Function to read accelerometer and gyroscope data
 void IMU_Read_Accel_Gyro(void) {
-
-
-    // Wait for DMA transfer to complete with timeout logic
-    uint32_t wait_start_time = get_millis();
-    uint32_t timeout_duration = 1000;  // Timeout duration for reading (in ms)
-
-    // Start I2C read with DMA for accelerometer and gyroscope data (14 bytes)
-    I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3B, imu_data, 14);
-
-
-    // Wait for DMA transfer to complete or timeout
-    while (!dma_read_complete) {
-        if (get_millis() - wait_start_time > timeout_duration) {
-            debug_print("Error: DMA read timeout\r\n");
-            return;  // Exit if the read operation times out
-        }
+    if(dma_read_complete == I2C_IDLE) {
+        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3B, imu_data, 14);
     }
-
-    // Process accelerometer data
-    accel.x = (int16_t)((imu_data[0] << 8) | imu_data[1]);
-    accel.y = (int16_t)((imu_data[2] << 8) | imu_data[3]);
-    accel.z = (int16_t)((imu_data[4] << 8) | imu_data[5]);
-
-    // Process gyroscope data
-    gyro.x = (int16_t)((imu_data[8] << 8) | imu_data[9]);
-    gyro.y = (int16_t)((imu_data[10] << 8) | imu_data[11]);
-    gyro.z = (int16_t)((imu_data[12] << 8) | imu_data[13]);
+    if(dma_read_complete == I2C_BUSY) {
+    	return;
+    }
+    if(dma_read_complete == I2C_COMPLETE) {
+        // Adatok feldolgozása
+        accel.x = (int16_t)((imu_data[0] << 8) | imu_data[1]);
+        accel.y = (int16_t)((imu_data[2] << 8) | imu_data[3]);
+        accel.z = (int16_t)((imu_data[4] << 8) | imu_data[5]);
+        gyro.x  = (int16_t)((imu_data[8] << 8) | imu_data[9]);
+        gyro.y  = (int16_t)((imu_data[10] << 8) | imu_data[11]);
+        gyro.z  = (int16_t)((imu_data[12] << 8) | imu_data[13]);
+        dma_read_complete = I2C_IDLE;
+    }
 }
-
 void IMU_compute_rotation() {
-    char str[256];
-
-    // Accelerometer scaling(Q16)
-    g_meas.x = q16_div(q16_from_int(accel.x), q16_from_int(ACC_LSB));
-    g_meas.y = q16_div(q16_from_int(accel.y), q16_from_int(ACC_LSB));
-    g_meas.z = q16_div(q16_from_int(accel.z), q16_from_int(ACC_LSB));
+    // Accelerometer scaling
+    g_meas.x = accel.x / ACC_LSB;
+    g_meas.y = accel.y / ACC_LSB;
+    g_meas.z = accel.z / ACC_LSB;
 
     // Normalize measurement
-    g_meas = vec3_normalize(g_meas);
+    g_meas = vector3_normalize(g_meas);
 
     //Compute Accelerometer-based orientation quaternion
-    vec3_q16_t cross = vec3_cross(g_ref, g_meas);
-    q16_t dot = vec3_dot(g_ref, g_meas);
+    Vector3 cross = vector3_cross(g_ref, g_meas);
+    float dot = vector3_dot(g_ref, g_meas);
 
-    quat_acc.x = cross.y;
-    quat_acc.y = cross.z;
-    quat_acc.z = -cross.x;
-    quat_acc.w = Q16_ONE + dot; // Changed from 4096 (Q12) to Q16_ONE (65536)
+    quat_acc.x = cross.x;
+    quat_acc.y = cross.y;
+    quat_acc.z = cross.z;
+    quat_acc.w = 1.0f + dot;
 
     // Normalize the accelerometer quaternion
-    quat_acc = quat_normalize(quat_acc);
+    quat_acc = quaternion_normalize(quat_acc);
 
     //Gyroscope Calibration Logic
     if(gyro_is_calibrated == 0)
@@ -269,58 +197,167 @@ void IMU_compute_rotation() {
 
     if(gyro_is_calibrated == 1)
     {
-        // Calculate Bias in Q16.
-        // Use int64_t for the shift to prevent overflow before division!
-        gyro_Bias.x = ((int64_t)gyro_Sample.x << Q16_SHIFT) / bias_sample_cnt;
-        gyro_Bias.y = ((int64_t)gyro_Sample.y << Q16_SHIFT) / bias_sample_cnt;
-        gyro_Bias.z = ((int64_t)gyro_Sample.z << Q16_SHIFT) / bias_sample_cnt;
+        gyro_Bias.x = (float) gyro_Sample.x / bias_sample_cnt;
+        gyro_Bias.y = (float) gyro_Sample.y / bias_sample_cnt;
+        gyro_Bias.z = (float) gyro_Sample.z / bias_sample_cnt;
 
         // Initialize integration with the current accelerometer orientation
         quat_gyro = quat_acc;
-        currenttime = get_millis();
         gyro_is_calibrated = 2;
     }
 
     if(gyro_is_calibrated == 2)
     {
-        //Get raw values in Q16 and subtract bias
-        gyro_meas.x = -(q16_from_int(gyro.y) - gyro_Bias.y);
-        gyro_meas.y = -(q16_from_int(gyro.z) - gyro_Bias.z);
-        gyro_meas.z =  (q16_from_int(gyro.x) - gyro_Bias.x);
+        gyro_meas.x = ((float) gyro.x - gyro_Bias.x) * GYRO_SCALE;
+        gyro_meas.y = ((float) gyro.y - gyro_Bias.y) * GYRO_SCALE;
+        gyro_meas.z = ((float) gyro.z - gyro_Bias.z) * GYRO_SCALE;
 
-        // deltatime should now be in Q16 (e.g., 0.01s = 655)
-        deltatime = get_deltatime();
+        // deltatime should now be in sec
+        deltatime = imu_deltatime_us() * 0.000001f;
+        //deltatime = 0.001f;
+        // Angular velocity in deg
+        float rad_factor = DEG2RAD * deltatime;
+/*
+        //0.5 because quat_derivative = 0.5 * q ⊗ ω
+        quat_delta.x = gyro_meas.y * rad_factor * -0.5f;
+        quat_delta.y = gyro_meas.z * rad_factor * -0.5f;
+        quat_delta.z = gyro_meas.x * rad_factor * 0.5f;*/
 
-        // Multiply rate by time
-        gyro_delta.x = q16_mul(gyro_meas.x, deltatime);
-        gyro_delta.y = q16_mul(gyro_meas.y, deltatime);
-        gyro_delta.z = q16_mul(gyro_meas.z, deltatime);
-
-        // Scale to radians and multiply by 0.5 for the quaternion derivative
-        // Original Scale: 0.001065 rad/s/LSB.
-        // Half Scale: 0.0005325.
-        // In Q20: 0.0005325 * 1,048,576 = 558.
-        quat_delta.w = Q16_ONE;
-        quat_delta.x = ((int64_t)gyro_delta.x * 558) >> 20;
-        quat_delta.y = ((int64_t)gyro_delta.y * 558) >> 20;
-        quat_delta.z = ((int64_t)gyro_delta.z * 558) >> 20;
+        //0.5 because quat_derivative = 0.5 * q ⊗ ω
+        quat_delta.x = gyro_meas.x * rad_factor * 0.5f;
+        quat_delta.y = gyro_meas.y * rad_factor * 0.5f;
+        quat_delta.z = gyro_meas.z * rad_factor * 0.5f;
+        quat_delta.w = 1.0f;
 
         // Integrate
-        quat_gyro = quat_mul(quat_gyro, quat_delta);
-        quat_gyro = quat_normalize(quat_gyro);
+        quat_gyro = quaternion_multiply(quat_gyro, quat_delta);
+        quat_gyro = quaternion_normalize(quat_gyro);
 
-        //Complementary Filter
-        quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2) / 100;
-        quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2) / 100;
-        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0) / 100; //Cannot use yaw from accelero
-        quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2) / 100;
+        float bias_acc = (dot < 0) ? -BETA : BETA;
+
+        // 4. Complementary Filter (NLERP)
+		// Megjegyzés: A Yaw (Z) tengelyt nem frissítjük az accelero alapján!
+		quat_gyro.w = (quat_gyro.w * ALPHA) + (quat_acc.w * bias_acc);
+		quat_gyro.x = (quat_gyro.x * ALPHA) + (quat_acc.x * bias_acc);
+		quat_gyro.y = (quat_gyro.y * ALPHA) + (quat_acc.y * bias_acc);
+		// quat_gyro.z marad giron alapuló, vagy nagyon minimális korrekciót kap
+		quat_gyro.z = (quat_gyro.z * 1.0f);
+
+		quat_flt_orientation = quaternion_normalize(quat_gyro);
+
+       /*//Complementary Filter
+        quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2);
+        quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2);
+        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0); //Cannot use yaw from accelero
+        quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2);
 
         // Final normalization and output
-        quat_gyro = quat_normalize(quat_gyro);
-        quat_flt_orientation = quat_gyro;
-
-        sprintf(str, "$%ld,%ld,%ld,%ld\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-        debug_print(str);
+        quat_gyro = quaternion_normalize(quat_gyro);
+        quat_flt_orientation = quat_gyro;*/
     }
 }
 
+// Segédfüggvény a várakozáshoz, hogy ne ismételjük a kódot
+HAL_StatusTypeDef Wait_For_I2C_Complete(uint32_t timeout_ms) {
+    uint32_t start = get_millis();
+    while (imu_i2c_state == I2C_BUSY) { // Az enum állapotodat használjuk
+        if (get_millis() - start > timeout_ms) {
+            debug_print("I2C Timeout!\r\n");
+            return HAL_TIMEOUT;
+        }
+    }
+    return HAL_OK;
+}
+
+// Skaláris szorzat (Dot Product)
+// Megadja a két vektor által bezárt szög koszinuszát (ha egységvektorok)
+float vector3_dot(Vector3 a, Vector3 b) {
+    return (a.x * b.x) + (a.y * b.y) + (a.z * b.z);
+}
+
+// Keresztszorzat (Cross Product)
+// Egy olyan vektort ad vissza, amely merőleges mindkét bemeneti vektorra
+Vector3 vector3_cross(Vector3 a, Vector3 b) {
+    Vector3 result;
+    result.x = (a.y * b.z) - (a.z * b.y);
+    result.y = (a.z * b.x) - (a.x * b.z);
+    result.z = (a.x * b.y) - (a.y * b.x);
+    return result;
+}
+
+// Normalizálás (Normalize)
+// Egységnyi hosszúságúvá teszi a vektort (hossza = 1.0)
+Vector3 vector3_normalize(Vector3 v) {
+    float magSq = (v.x * v.x) + (v.y * v.y) + (v.z * v.z);
+
+    if (magSq > 0.0000000001f) { // Biztonságos küszöb
+        float invMag = 1.0f / sqrtf(magSq);
+        return (Vector3){v.x * invMag, v.y * invMag, v.z * invMag};
+    }
+
+    return (Vector3){0.0f, 0.0f, 0.0f}; // Ha nulla a vektor hossza
+}
+
+quaternion quaternion_multiply(quaternion q, quaternion r) {
+    quaternion res;
+    // W komponens (a te struktúrádban ez a 4. elem)
+    res.w = q.w * r.w - q.x * r.x - q.y * r.y - q.z * r.z;
+    // X komponens
+    res.x = q.w * r.x + q.x * r.w + q.y * r.z - q.z * r.y;
+    // Y komponens
+    res.y = q.w * r.y - q.x * r.z + q.y * r.w + q.z * r.x;
+    // Z komponens
+    res.z = q.w * r.z + q.x * r.y - q.y * r.x + q.z * r.w;
+    return res;
+}
+
+quaternion quaternion_normalize(quaternion q) {
+    float magSq = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
+
+    if (magSq > 0.000001f) {
+        float invMag = 1.0f / sqrtf(magSq);
+        return (quaternion){
+            .x = q.x * invMag,
+            .y = q.y * invMag,
+            .z = q.z * invMag,
+            .w = q.w * invMag
+        };
+    }
+    return (quaternion){0.0f, 0.0f, 0.0f, 1.0f}; // Identity (Unity-ben 0,0,0,1)
+}
+
+euler_float quat_to_euler(quaternion q_raw) {
+    euler_float euler;
+
+    // --- TENGELY KIOSZTÁS MÓDOSÍTÁSA (90 fokos Z forgatás) ---
+    // A szenzor X tengelye a váz Y tengelye lesz,
+    // a szenzor Y tengelye pedig a váz negatív X tengelye.
+    float qw = q_raw.w;
+    float qx = q_raw.y;  // Szenzor Y -> Váz X
+    float qy = -q_raw.x; // Szenzor X -> Váz -Y
+    float qz = q_raw.z;  // Z változatlan
+
+    // --- ROLL (X-tengely) ---
+    float t0 = 2.0f * (qw * qx + qy * qz);
+    float t1 = 1.0f - 2.0f * (qx * qx + qy * qy);
+    euler.roll = atan2f(t0, t1);
+
+    // --- PITCH (Y-tengely) ---
+    float t2 = 2.0f * (qw * qy - qz * qx);
+    if (t2 > 1.0f) t2 = 1.0f;
+    if (t2 < -1.0f) t2 = -1.0f;
+    euler.pitch = asinf(t2);
+
+    // --- YAW (Z-tengely) ---
+    float t3 = 2.0f * (qw * qz + qx * qy);
+    float t4 = 1.0f - 2.0f * (qy * qy + qz * qz);
+    euler.yaw = atan2f(t3, t4);
+
+    // Konverzió fokba
+    const float rad2deg = 57.2957795f;
+    euler.roll  *= rad2deg;
+    euler.pitch *= rad2deg;
+    euler.yaw   *= rad2deg;
+
+    return euler;
+}

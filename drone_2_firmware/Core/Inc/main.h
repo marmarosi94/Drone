@@ -37,15 +37,41 @@ extern "C" {
 #include "IMU.h"
 #include <math.h>
 #include "COMM.h"
-#include <Q12.h>
+#include "MOTOR.h"
+#include "PID_CONTROL.h"
+
+#define LOOP1_US 		1000
+#define LOOP2_US 		2000
+#define LOOP10_mS 		10000
+#define LOOP_SEC 		1000000
+
 // Global variables to track time
+extern I2C_HandleTypeDef hi2c1;
+extern DMA_HandleTypeDef hdma_i2c1_tx;
+extern DMA_HandleTypeDef hdma_i2c1_rx;
+extern TIM_HandleTypeDef htim1;
+extern TIM_HandleTypeDef htim2;
+extern TIM_HandleTypeDef htim3;
+extern TIM_HandleTypeDef htim16;
+extern TIM_HandleTypeDef htim17;
+
+extern UART_HandleTypeDef huart1;
+extern DMA_HandleTypeDef hdma_usart1_tx;
+extern DMA_HandleTypeDef hdma_usart1_rx;
+
 extern volatile uint32_t micros;  // Millisecond counter
-extern volatile uint32_t millis;  // Millisecond counter
+extern volatile float millis;  // Millisecond counter
 extern volatile uint32_t timeout_flag;  // Timeout flag for time-based events
-extern volatile int32_t deltatime;
+extern volatile float deltatime;
+extern volatile float pid_deltatime;
 extern volatile uint32_t currenttime;
-q16_t get_deltatime_millis(void);
-q16_t get_deltatime(void);
+extern volatile uint32_t lasttime;
+
+float get_deltatime(void);
+float get_deltatime_us(void);
+float imu_deltatime_us(void);
+float pid_deltatime_us(void);
+uint32_t get_us(void);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -63,13 +89,15 @@ q16_t get_deltatime(void);
 
 /* USER CODE END EM */
 
+void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
+
 /* Exported functions prototypes ---------------------------------------------*/
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-uint32_t get_millis(void);
+float get_millis(void);
 
-void delay(uint32_t ms);
+void delay_ms(uint32_t ms);
 int timeout(uint32_t start_time, uint32_t timeout_period);
 
 /* USER CODE END EFP */

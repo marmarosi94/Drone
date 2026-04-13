@@ -8,7 +8,6 @@
 
 char uart1_txBuffer[UART_TX_BUFFER_SIZE];  // Transmit buffer
 char uart1_rxBuffer[UART_RX_BUFFER_SIZE];  // Receive buffer (if needed)
-
 volatile uint16_t txWriteIndex = 0;
 volatile uint16_t txReadIndex = 0;
 volatile uint8_t txBusy = 0;
@@ -16,14 +15,14 @@ char str_tmp[UART_TX_BUFFER_SIZE] = {0};
 
 uint8_t i2c1_txBuffer[I2C_TX_BUFFER_SIZE];
 uint8_t i2c1_rxBuffer[I2C_RX_BUFFER_SIZE];
-uint8_t dma_read_complete = 0;
-uint8_t dma_write_complete = 0;
+I2C_State_t dma_read_complete = I2C_IDLE;
+I2C_State_t dma_write_complete = I2C_IDLE;
 
 
 // Function to write data to the IMU register using I2C with DMA
 HAL_StatusTypeDef I2C_Write_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size) {
     // Send the register address followed by the data
-	dma_write_complete = 0;
+	dma_write_complete = I2C_BUSY;
     HAL_StatusTypeDef status = HAL_I2C_Mem_Write_DMA(&hi2c1, devAddr, regAddr, I2C_MEMADD_SIZE_8BIT, data, size);
     return status;
 }
@@ -31,7 +30,7 @@ HAL_StatusTypeDef I2C_Write_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data,
 // Function to read data from the IMU register using I2C with DMA
 HAL_StatusTypeDef I2C_Read_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, uint16_t size) {
     // Send the register address and then read the data
-	dma_read_complete = 0;
+	dma_read_complete = I2C_BUSY;
     HAL_StatusTypeDef status = HAL_I2C_Mem_Read_DMA(&hi2c1, devAddr, regAddr, I2C_MEMADD_SIZE_8BIT, data, size);
     return status;
 }
@@ -41,18 +40,18 @@ HAL_StatusTypeDef I2C_Read_DMA(uint8_t devAddr, uint8_t regAddr, uint8_t *data, 
 void HAL_I2C_MemRxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	  UNUSED(hi2c);
 	// Set the flag to indicate that the DMA read operation is complete
-    dma_read_complete = 1;
+    dma_read_complete = I2C_COMPLETE;
 }
 
 void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	  UNUSED(hi2c);
 	// Set the flag to indicate that the DMA read operation is complete
-	  dma_write_complete = 1;
+	  dma_write_complete = I2C_COMPLETE;
 }
 
 void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
     if (hi2c->Instance == I2C1) {
-    	dma_write_complete = 1;
+    	dma_write_complete = I2C_COMPLETE;
         // Handle transmit complete (DMA transfer completed)
     }
 }
@@ -60,6 +59,7 @@ void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
     if (hi2c->Instance == I2C1) {
         // Handle receive complete (DMA transfer completed)
+    	dma_read_complete = I2C_COMPLETE;
     }
 }
 
@@ -128,34 +128,4 @@ void HAL_UART_TxCpltCallback(UART_HandleTypeDef *huart) {
             txBusy = 0;  // Mark the transmission as not busy
         }
     //}
-}
-
-void print_float_quat(quat_q16_t obj, uint8_t * str_float){
-	// Helper to get printable parts
-	int32_t x_int = obj.x / 4096;
-	int32_t y_int = obj.y / 4096;
-	int32_t z_int = obj.z / 4096;
-	int32_t w_int = obj.w / 4096;
-	// Scale remainder to 1000 for 3 decimal places: (rem * 1000) / 4096
-	int32_t x_frac = abs((int32_t)obj.x % 4096) * 1000 / 4096;
-	int32_t y_frac = abs((int32_t)obj.y % 4096) * 1000 / 4096;
-	int32_t z_frac = abs((int32_t)obj.z % 4096) * 1000 / 4096;
-	int32_t w_frac = abs((int32_t)obj.w % 4096) * 1000 / 4096;
-
-    sprintf(str_float, "$%i.%i,%i.%i,%i.%i,%i.%i\r\n", x_int, x_frac, y_int,y_frac, z_int, z_frac, w_int, w_frac);
-    debug_print(str_float);  // Send gyroscope data to PC
-}
-
-void print_float_vec3(vec3_q16_t obj, uint8_t * str_float){
-	// Helper to get printable parts
-	int32_t x_int = obj.x / 4096;
-	int32_t y_int = obj.y / 4096;
-	int32_t z_int = obj.z / 4096;
-	// Scale remainder to 1000 for 3 decimal places: (rem * 1000) / 4096
-	int32_t x_frac = abs((int32_t)obj.x % 4096) * 1000 / 4096;
-	int32_t y_frac = abs((int32_t)obj.y % 4096) * 1000 / 4096;
-	int32_t z_frac = abs((int32_t)obj.z % 4096) * 1000 / 4096;
-
-    sprintf(str_float, "%i.%i,%i.%i,%i.%i\r\n", x_int, x_frac, y_int,y_frac, z_int, z_frac);
-    debug_print(str_float);  // Send gyroscope data to PC
 }
