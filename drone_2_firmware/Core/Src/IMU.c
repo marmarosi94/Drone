@@ -24,7 +24,7 @@ Vector3 gyro;
 Vector3 gyro_flt;
 
 Vector3 g_ref = {0,0,1};
-Vector3 g_meas = {0,0,0};
+Vector3 gravity_meas = {0,0,0};
 
 quaternion quat_acc   = {0,0,0,1};
 quaternion quat_gyro = {0,0,0,1};
@@ -161,100 +161,71 @@ void IMU_Read_Accel_Gyro(void) {
     }
 }
 void IMU_compute_rotation() {
-    // Accelerometer scaling
-    g_meas.x = accel.x / ACC_LSB;
-    g_meas.y = accel.y / ACC_LSB;
-    g_meas.z = accel.z / ACC_LSB;
+    // --- 1. Gyorsulásmérő skálázás és TENGELYFORGATÁS (90° Z) ---
+    // Szenzor Y -> Váz X
+    // Szenzor -X -> Váz Y
+    float ax_raw = -(float)accel.x / ACC_LSB;
+    float ay_raw = (float)accel.y / ACC_LSB;
+    float az_raw = (float)accel.z / ACC_LSB;
+    gravity_meas.x = ax_raw;       // Váz X = Szenzor Y
+    gravity_meas.y = ay_raw;      // Váz Y = Szenzor -X
+    gravity_meas.z = az_raw;
 
-    // Normalize measurement
-    g_meas = vector3_normalize(g_meas);
+    // Normalizálás
+    gravity_meas = vector3_normalize(gravity_meas);
 
-    //Compute Accelerometer-based orientation quaternion
-    Vector3 cross = vector3_cross(g_ref, g_meas);
-    float dot = vector3_dot(g_ref, g_meas);
-
-    quat_acc.x = cross.x;
-    quat_acc.y = cross.y;
-    quat_acc.z = cross.z;
+    float dot = gravity_meas.z; // Mivel g_ref = (0,0,1)
     quat_acc.w = 1.0f + dot;
-
-    // Normalize the accelerometer quaternion
+    quat_acc.x = -gravity_meas.y; // Cross product X komponense
+    quat_acc.y =  gravity_meas.x; // Cross product Y komponense
+    quat_acc.z =  0.0f;
     quat_acc = quaternion_normalize(quat_acc);
 
-    //Gyroscope Calibration Logic
-    if(gyro_is_calibrated == 0)
-    {
+    // --- 2. Giroszkóp kalibráció (Szenzor koordinátákban marad a bias) ---
+    if(gyro_is_calibrated == 0) {
         gyro_Sample.x += gyro.x;
         gyro_Sample.y += gyro.y;
         gyro_Sample.z += gyro.z;
-
         bias_sample_cnt++;
-        if (BIAS_CALIB_SAMPLE_QTY <= bias_sample_cnt)
-        {
-            gyro_is_calibrated = 1;
-        }
+        if (BIAS_CALIB_SAMPLE_QTY <= bias_sample_cnt) gyro_is_calibrated = 1;
     }
 
-    if(gyro_is_calibrated == 1)
-    {
+    if(gyro_is_calibrated == 1) {
         gyro_Bias.x = (float) gyro_Sample.x / bias_sample_cnt;
         gyro_Bias.y = (float) gyro_Sample.y / bias_sample_cnt;
         gyro_Bias.z = (float) gyro_Sample.z / bias_sample_cnt;
-
-        // Initialize integration with the current accelerometer orientation
         quat_gyro = quat_acc;
         gyro_is_calibrated = 2;
     }
 
-    if(gyro_is_calibrated == 2)
-    {
-        gyro_meas.x = ((float) gyro.x - gyro_Bias.x) * GYRO_SCALE;
-        gyro_meas.y = ((float) gyro.y - gyro_Bias.y) * GYRO_SCALE;
-        gyro_meas.z = ((float) gyro.z - gyro_Bias.z) * GYRO_SCALE;
+    if(gyro_is_calibrated == 2) {
+            // Gyro tengelyforgatás
+            float gx_frame = -((float)gyro.x - gyro_Bias.x) * GYRO_SCALE;
+            float gy_frame =  ((float)gyro.y - gyro_Bias.y) * GYRO_SCALE;
+            float gz_frame =  ((float)gyro.z - gyro_Bias.z) * GYRO_SCALE;
 
-        // deltatime should now be in sec
-        deltatime = imu_deltatime_us() * 0.000001f;
-        //deltatime = 0.001f;
-        // Angular velocity in deg
-        float rad_factor = DEG2RAD * deltatime;
-/*
-        //0.5 because quat_derivative = 0.5 * q ⊗ ω
-        quat_delta.x = gyro_meas.y * rad_factor * -0.5f;
-        quat_delta.y = gyro_meas.z * rad_factor * -0.5f;
-        quat_delta.z = gyro_meas.x * rad_factor * 0.5f;*/
+            deltatime = imu_deltatime_us() * 0.000001f;
+            float half_rad = 0.5f * DEG2RAD * deltatime;
 
-        //0.5 because quat_derivative = 0.5 * q ⊗ ω
-        quat_delta.x = gyro_meas.x * rad_factor * 0.5f;
-        quat_delta.y = gyro_meas.y * rad_factor * 0.5f;
-        quat_delta.z = gyro_meas.z * rad_factor * 0.5f;
-        quat_delta.w = 1.0f;
+            // Quat delta
+			quat_delta.w = 1.0f;
+			quat_delta.x = gx_frame * half_rad;
+			quat_delta.y = gy_frame * half_rad;
+			quat_delta.z = gz_frame * half_rad;
 
-        // Integrate
-        quat_gyro = quaternion_multiply(quat_gyro, quat_delta);
-        quat_gyro = quaternion_normalize(quat_gyro);
+            // Integrálás (Fontos a sorrend: régi * delta)
+            quat_gyro = quaternion_multiply(quat_gyro, quat_delta);
+            quat_gyro = quaternion_normalize(quat_gyro);
+            // Rövid úton való korrekció (sign flip védelem)
+            float dot_product = quat_gyro.w * quat_acc.w + quat_gyro.x * quat_acc.x + quat_gyro.y * quat_acc.y;
+            float sign = (dot_product < 0) ? -1.0f : 1.0f;
 
-        float bias_acc = (dot < 0) ? -BETA : BETA;
-
-        // 4. Complementary Filter (NLERP)
-		// Megjegyzés: A Yaw (Z) tengelyt nem frissítjük az accelero alapján!
-		quat_gyro.w = (quat_gyro.w * ALPHA) + (quat_acc.w * bias_acc);
-		quat_gyro.x = (quat_gyro.x * ALPHA) + (quat_acc.x * bias_acc);
-		quat_gyro.y = (quat_gyro.y * ALPHA) + (quat_acc.y * bias_acc);
-		// quat_gyro.z marad giron alapuló, vagy nagyon minimális korrekciót kap
-		quat_gyro.z = (quat_gyro.z * 1.0f);
-
-		quat_flt_orientation = quaternion_normalize(quat_gyro);
-
-       /*//Complementary Filter
-        quat_gyro.w = (quat_gyro.w * 98 + quat_acc.w * 2);
-        quat_gyro.x = (quat_gyro.x * 98 + quat_acc.x * 2);
-        quat_gyro.y = (quat_gyro.y * 100 + quat_acc.y * 0); //Cannot use yaw from accelero
-        quat_gyro.z = (quat_gyro.z * 98 + quat_acc.z * 2);
-
-        // Final normalization and output
-        quat_gyro = quaternion_normalize(quat_gyro);
-        quat_flt_orientation = quat_gyro;*/
-    }
+			quat_gyro.w = (ALPHA * quat_gyro.w) + (BETA * quat_acc.w * sign);
+			quat_gyro.x = (ALPHA * quat_gyro.x) + (BETA * quat_acc.x * sign);
+			quat_gyro.y = (ALPHA * quat_gyro.y) + (BETA * quat_acc.y * sign);
+			quat_gyro.z = quat_gyro.z; 	// YAW only gyro
+			quat_flt_orientation = quaternion_normalize(quat_gyro);
+      }
 }
 
 // Segédfüggvény a várakozáshoz, hogy ne ismételjük a kódot
@@ -326,38 +297,30 @@ quaternion quaternion_normalize(quaternion q) {
     return (quaternion){0.0f, 0.0f, 0.0f, 1.0f}; // Identity (Unity-ben 0,0,0,1)
 }
 
-euler_float quat_to_euler(quaternion q_raw) {
+euler_float quat_to_euler(quaternion q) {
     euler_float euler;
 
-    // --- TENGELY KIOSZTÁS MÓDOSÍTÁSA (90 fokos Z forgatás) ---
-    // A szenzor X tengelye a váz Y tengelye lesz,
-    // a szenzor Y tengelye pedig a váz negatív X tengelye.
-    float qw = q_raw.w;
-    float qx = q_raw.y;  // Szenzor Y -> Váz X
-    float qy = -q_raw.x; // Szenzor X -> Váz -Y
-    float qz = q_raw.z;  // Z változatlan
-
     // --- ROLL (X-tengely) ---
-    float t0 = 2.0f * (qw * qx + qy * qz);
-    float t1 = 1.0f - 2.0f * (qx * qx + qy * qy);
-    euler.roll = atan2f(t0, t1);
+    // Az orr-farr tengely körüli elmozdulás
+    float t0 = 2.0f * (q.w * q.x + q.y * q.z);
+    float t1 = 1.0f - 2.0f * (q.x * q.x + q.y * q.y);
+    euler.roll = atan2f(t0, t1) * M_RAD2DEG;
 
     // --- PITCH (Y-tengely) ---
-    float t2 = 2.0f * (qw * qy - qz * qx);
+    // A szárny/kar tengely körüli elmozdulás (bólintás)
+    // t2 kiszámítása a standard képlet alapján: 2.0 * (w*y - z*x)
+    float t2 = 2.0f * (q.w * q.y - q.z * q.x);
+
+    // Numerikus stabilitás: ha a gép függőlegesen áll (90 fok), az asinf NaN-t adna
     if (t2 > 1.0f) t2 = 1.0f;
     if (t2 < -1.0f) t2 = -1.0f;
-    euler.pitch = asinf(t2);
+    euler.pitch = asinf(t2) * M_RAD2DEG;
 
     // --- YAW (Z-tengely) ---
-    float t3 = 2.0f * (qw * qz + qx * qy);
-    float t4 = 1.0f - 2.0f * (qy * qy + qz * qz);
-    euler.yaw = atan2f(t3, t4);
-
-    // Konverzió fokba
-    const float rad2deg = 57.2957795f;
-    euler.roll  *= rad2deg;
-    euler.pitch *= rad2deg;
-    euler.yaw   *= rad2deg;
+    // Függőleges tengely körüli elmozdulás (elfordulás)
+    float t3 = 2.0f * (q.w * q.z + q.x * q.y);
+    float t4 = 1.0f - 2.0f * (q.y * q.y + q.z * q.z);
+    euler.yaw = atan2f(t3, t4) * M_RAD2DEG;
 
     return euler;
 }

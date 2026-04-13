@@ -32,7 +32,7 @@
 	#define BETA  0.02f
 	#define MAHONEY_KP  2048   // 0.5 in Q12 (Proportional: how fast it reacts)
 	#define MAHONEY_KI  40     // 0.01 in Q12 (Integral: how fast it "learns" bias)
-
+	#define M_RAD2DEG 57.295779513f
 	extern char str[256];
 
     typedef struct {
@@ -60,7 +60,7 @@
     // Accelerometer
     extern Vector3 accel;
     extern Vector3 g_ref;
-    extern Vector3 g_meas;
+    extern Vector3 gravity_meas;
     extern quaternion quat_flt_orientation;
     extern quaternion quat_acc;
     // Gyroscope

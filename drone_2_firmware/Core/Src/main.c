@@ -176,11 +176,12 @@ int main(void)
 	  if ((uint32_t)(now - t3) >= LOOP10_mS)
 	  {
 	      t3 += LOOP10_mS;
+	      //sprintf(str, "quat_acc:%f,%f,%f,%f\r\n", quat_acc.x, quat_acc.y, quat_acc.z, quat_acc.w);
 	      //sprintf(str, "$%f,%f,%f\r\n", gyro_flt.x, gyro_flt.y, gyro_flt.z);
-	      //sprintf(str, "$%f,%f,%f,%f\r\n", quat_gyro.x, quat_gyro.y, quat_gyro.z, quat_gyro.w);
-	      //sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-	      sprintf(str, "$%f,%f,%f\r\n", euler_flt.pitch, euler_flt.roll, euler_flt.yaw);
-	      //sprintf(str, "$%f,%f,%f\r\n", g_meas.x, g_meas.y, g_meas.z);
+	      //sprintf(str, "quat_gyro:%f,%f,%f,%f\r\n", quat_gyro.x, quat_gyro.y, quat_gyro.z, quat_gyro.w);
+	      sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
+	      //sprintf(str, "$%f,%f,%f\r\n", euler_flt.pitch, euler_flt.roll, euler_flt.yaw);
+	      //sprintf(str, "$%f,%f,%f\r\n", gravity_meas.x, gravity_meas.y, gravity_meas.z);
 	      debug_print(str);
 
 	  }
