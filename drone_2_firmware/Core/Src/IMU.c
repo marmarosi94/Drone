@@ -12,27 +12,23 @@
 int bias_sample_cnt = 0;
 I2C_State_t imu_i2c_state;
 uint8_t gyro_is_calibrated = 0;
-uint8_t imu_data[14];
+Imu_raw_data_t imu_raw={0};
 
 // Accelerometer
 Vector3 accel = {0};
-
 Vector3 gyro_Bias = {0};
 Vector3 gyro_Sample = {0};
 Vector3 gyro_frame = {0};
 Vector3 gyro;
-Vector3 gyro_flt;
-
 Vector3 g_ref = {0,0,1};
 Vector3 gravity_meas = {0,0,0};
-
-quaternion quat_acc   = {0,0,0,1};
+Vector3 gyro_bias_integral = {0, 0, 0}; // Az integrált hiba tárolója
+float KI = 0.001f;                      // Integrál erősítés (nagyon kicsi érték kell ide)
 quaternion quat_gyro = {0,0,0,1};
 quaternion quat_delta = {0,0,0,1};
 quaternion quat_flt_orientation = {0};
-
 euler_float euler_flt = {0};
-
+Control_t pid_control = {0};
 Vector3 position = {0};
 Vector3 velocity = {0};
 
@@ -91,6 +87,10 @@ void IMU_Config_Fast_Mode(void) {
     data = 0x00;
     HAL_I2C_Mem_Write(&hi2c1, i2c_addr, 0x19, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
 
+    //INT_ENABLE
+    data = 0x01;
+    HAL_I2C_Mem_Write(&hi2c1, i2c_addr, 0x38, I2C_MEMADD_SIZE_8BIT, &data, 1, 100);
+
     debug_print("IMU Fast Mode configured.\r\n");
     IMU_Verify_Config();
 }
@@ -147,39 +147,37 @@ void IMU_Verify_Config(void) {
 // Function to read accelerometer and gyroscope data
 void IMU_Read_Accel_Gyro(void) {
     if(dma_read_complete == I2C_IDLE) {
-        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3B, imu_data, 14);
+        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3A, (uint8_t *)&imu_raw, 15);
     }
     if(dma_read_complete == I2C_BUSY) {
     	return;
     }
     if(dma_read_complete == I2C_COMPLETE) {
-        // Adatok feldolgozása
-        accel.x = (int16_t)((imu_data[0] << 8) | imu_data[1]);
-        accel.y = (int16_t)((imu_data[2] << 8) | imu_data[3]);
-        accel.z = (int16_t)((imu_data[4] << 8) | imu_data[5]);
-        gyro.x  = (int16_t)((imu_data[8] << 8) | imu_data[9]);
-        gyro.y  = (int16_t)((imu_data[10] << 8) | imu_data[11]);
-        gyro.z  = (int16_t)((imu_data[12] << 8) | imu_data[13]);
+    	if(imu_raw.status == IMU_DATA_READY)
+		{
+			// Note: imu_data[6-7] is Temperature, which is why we skip to [8]
+			accel.x = (int16_t)((imu_raw.imu_data[0] << 8) | imu_raw.imu_data[1]);
+			accel.y = (int16_t)((imu_raw.imu_data[2] << 8) | imu_raw.imu_data[3]);
+			accel.z = (int16_t)((imu_raw.imu_data[4] << 8) | imu_raw.imu_data[5]);
+
+			gyro.x  = (int16_t)((imu_raw.imu_data[8] << 8) | imu_raw.imu_data[9]);
+			gyro.y  = (int16_t)((imu_raw.imu_data[10] << 8) | imu_raw.imu_data[11]);
+			gyro.z  = (int16_t)((imu_raw.imu_data[12] << 8) | imu_raw.imu_data[13]);
+		}
         dma_read_complete = I2C_IDLE;
     }
 }
-void IMU_compute_rotation() {
-    // --- 1. Gyorsulásmérő skálázás és TENGELYFORGATÁS (90° Z) ---
-	gravity_meas.x = -(float)accel.x / ACC_LSB;
-	gravity_meas.y = (float)accel.y / ACC_LSB;
-	gravity_meas.z  = (float)accel.z / ACC_LSB;
 
-    // Normalizálás
+void IMU_compute_rotation() {
+    // Accelerometer data
+	gravity_meas.x = (float)accel.x / ACC_LSB;
+	gravity_meas.y = (float)accel.y / ACC_LSB;
+	gravity_meas.z = (float)accel.z / ACC_LSB;
+
+    //Aceleroy normalization
     gravity_meas = vector3_normalize(gravity_meas);
 
-    float dot = gravity_meas.z; // Mivel g_ref = (0,0,1)
-    quat_acc.w = 1.0f + dot;
-    quat_acc.x = -gravity_meas.y; // Cross product X komponense
-    quat_acc.y =  gravity_meas.x; // Cross product Y komponense
-    quat_acc.z =  0.0f;
-    quat_acc = quaternion_normalize(quat_acc);
-
-    // --- 2. Giroszkóp kalibráció (Szenzor koordinátákban marad a bias) ---
+    // Gyro calibration
     if(gyro_is_calibrated == 0) {
         gyro_Sample.x += gyro.x;
         gyro_Sample.y += gyro.y;
@@ -196,33 +194,36 @@ void IMU_compute_rotation() {
     }
 
     if(gyro_is_calibrated == 2) {
-            // Gyro tengelyforgatás
-
+            // Gyro rotation
     		gyro_frame.x = -((float)gyro.x - gyro_Bias.x) * GYRO_SCALE;
     		gyro_frame.y =  ((float)gyro.y - gyro_Bias.y) * GYRO_SCALE;
     		gyro_frame.z =  ((float)gyro.z - gyro_Bias.z) * GYRO_SCALE;
 
-            // --- 3. MAHONY LOGIKA: Gravitációs vektor becslése a kvaternióból ---
-            // Kiszámoljuk, hol "kellene" lennie a gravitációnak a jelenlegi orientáció szerint
+            // MAHONY LOGIC: Gravity quaternion prediction from gyro // quaternion -> rotation matrix Z
             Vector3 gyro_g_ref= {0};
             gyro_g_ref.x = 2.0f * (quat_gyro.x * quat_gyro.z - quat_gyro.w * quat_gyro.y);
             gyro_g_ref.y = 2.0f * (quat_gyro.w * quat_gyro.x + quat_gyro.y * quat_gyro.z);
             gyro_g_ref.z = quat_gyro.w * quat_gyro.w - quat_gyro.x * quat_gyro.x - quat_gyro.y * quat_gyro.y + quat_gyro.z * quat_gyro.z;
 
-            // HIBA (Error term): A mért és becsült gravitáció vektoriális szorzata (Cross product)
-            // Ez a hiba csak a Roll és Pitch tengelyeken keletkezik!
+            // Error of frame and world gravity orientation
             Vector3 error = {0};
             error.x = (gravity_meas.y * gyro_g_ref.z - gravity_meas.z * gyro_g_ref.y);
             error.y = (gravity_meas.z * gyro_g_ref.x - gravity_meas.x * gyro_g_ref.z);
             error.z = (gravity_meas.x * gyro_g_ref.y - gravity_meas.y * gyro_g_ref.x);
 
-            // --- 4. KORREKCIÓ ---
-			// A giroszkóp sebességét módosítjuk a hiba és a BETA (Kp) erősítés szorzatával
-            gyro_frame.x += BETA * error.x;
-            gyro_frame.y += BETA * error.y;
-            gyro_frame.z += BETA * error.z;
+            //deltatime = imu_deltatime_us() * 0.000001f;
+            deltatime = 0.001f;
 
-            deltatime = imu_deltatime_us() * 0.000001f;
+            // error * KI * deltatime
+            gyro_bias_integral.x += error.x * KI * deltatime;
+            gyro_bias_integral.y += error.y * KI * deltatime;
+            gyro_bias_integral.z += error.z * KI * deltatime;
+
+            //Gravity correction
+            gyro_frame.x += BETA * error.x + gyro_bias_integral.x;
+            gyro_frame.y += BETA * error.y + gyro_bias_integral.y;
+            gyro_frame.z += BETA * error.z + gyro_bias_integral.z;
+
             float half_rad = 0.5f * DEG2RAD * deltatime;
 
             // Quat delta
@@ -239,33 +240,31 @@ void IMU_compute_rotation() {
       }
 }
 void IMU_compute_position(){
-	// --- 5. POZÍCIÓ ÉS SEBESSÉG BECSLÉS ---
-
-	    // A: Lineáris gyorsulás kinyerése Body Frame-ben
-	    // Kivonjuk a becsült gravitációt (g_ref) a mértből (meas)
-	    // Megjegyzés: Ha gravity_meas nincs visszaszorozva 1.0f-re, tedd meg itt.
+	    // Gravity compensation (with normalized values)
 	    Vector3 lin_acc_body;
 	    lin_acc_body.x = gravity_meas.x - g_ref.x;
 	    lin_acc_body.y = gravity_meas.y - g_ref.y;
 	    lin_acc_body.z = gravity_meas.z - g_ref.z;
 
-	    // B: Átforgatás Inertial (Földi) Frame-be
+	    //Rotation to world frame
 	    // A quat_flt_orientation kvaternióval forgatjuk a lin_acc_body vektort
 	    Vector3 lin_acc_earth;
 
 	    // Hatékony vektor-kvaternió forgatás (v' = q * v * q^-1)
-	    float qx = quat_flt_orientation.x, qy = quat_flt_orientation.y;
-	    float qz = quat_flt_orientation.z, qw = quat_flt_orientation.w;
+	    float qw = quat_flt_orientation.w;
+	    float qx = quat_flt_orientation.x;
+	    float qy = quat_flt_orientation.y;
+	    float qz = quat_flt_orientation.z;
+	    Vector3 q_vec = {qx, qy, qz};
+	    Vector3 t = vector3_cross(q_vec, lin_acc_body);
+	    t.x *= 2.0f;
+	    t.y *= 2.0f;
+	    t.z *= 2.0f;
+	    lin_acc_earth.x = lin_acc_body.x + qw * t.x + (qy * t.z - qz * t.y);
+	    lin_acc_earth.y = lin_acc_body.y + qw * t.y + (qz * t.x - qx * t.z);
+	    lin_acc_earth.z = lin_acc_body.z + qw * t.z + (qx * t.y - qy * t.x);
 
-	    float tx = 2.0f * (qy * lin_acc_body.z - qz * lin_acc_body.y);
-	    float ty = 2.0f * (qz * lin_acc_body.x - qx * lin_acc_body.z);
-	    float tz = 2.0f * (qx * lin_acc_body.y - qy * lin_acc_body.x);
-
-	    lin_acc_earth.x = lin_acc_body.x + qw * tx + (qy * tz - qz * ty);
-	    lin_acc_earth.y = lin_acc_body.y + qw * ty + (qz * tx - qx * tz);
-	    lin_acc_earth.z = lin_acc_body.z + qw * tz + (qx * ty - qy * tx);
-
-	    // C: Integrálás sebességgé (m/s)
+	    // Integrationto velocity (m/s)
 	    // 9.81f szorzó kell, ha a gyorsulásmérőd 1g-ben mér
 	    float acc_m_s2 = 9.81f;
 	    float deadband = 0.05f; // Zajszűrés: csak ennél nagyobb gyorsulást integrálunk
@@ -279,7 +278,7 @@ void IMU_compute_position(){
 	    if (fabs(lin_acc_earth.z) > deadband) velocity.z += lin_acc_earth.z * acc_m_s2 * deltatime;
 	    else velocity.z *= 0.98f;
 
-	    // D: Integrálás pozícióvá (m)
+	    // Integration to position
 	    position.x += velocity.x * deltatime;
 	    position.y += velocity.y * deltatime;
 	    position.z += velocity.z * deltatime;
@@ -325,17 +324,19 @@ Vector3 vector3_normalize(Vector3 v) {
 
     return (Vector3){0.0f, 0.0f, 0.0f}; // Ha nulla a vektor hossza
 }
-
+float vector3_length(Vector3 v) {
+    return sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
+}
 quaternion quaternion_multiply(quaternion q, quaternion r) {
     quaternion res;
-    // W komponens (a te struktúrádban ez a 4. elem)
-    res.w = q.w * r.w - q.x * r.x - q.y * r.y - q.z * r.z;
     // X komponens
     res.x = q.w * r.x + q.x * r.w + q.y * r.z - q.z * r.y;
     // Y komponens
     res.y = q.w * r.y - q.x * r.z + q.y * r.w + q.z * r.x;
     // Z komponens
     res.z = q.w * r.z + q.x * r.y - q.y * r.x + q.z * r.w;
+    // W komponens
+    res.w = q.w * r.w - q.x * r.x - q.y * r.y - q.z * r.z;
     return res;
 }
 

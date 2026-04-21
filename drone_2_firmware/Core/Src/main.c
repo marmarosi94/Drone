@@ -29,40 +29,21 @@
 /* USER CODE BEGIN PTD */
 
 // Global variables to track time
-volatile uint32_t micros;  // Millisecond counter
-volatile float millis;  // Millisecond counter
-volatile uint32_t currenttime;
 volatile float deltatime;
 volatile float pid_deltatime;
-volatile uint32_t lasttime;
 volatile uint32_t pid_lasttime;
 volatile uint32_t imu_lasttime;
-volatile uint32_t last_us;
-
 /* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-
-/* USER CODE END PM */
 
 /* Private variables ---------------------------------------------------------*/
 I2C_HandleTypeDef hi2c1;
 DMA_HandleTypeDef hdma_i2c1_tx;
 DMA_HandleTypeDef hdma_i2c1_rx;
-
 TIM_HandleTypeDef htim1;
 TIM_HandleTypeDef htim3;
 TIM_HandleTypeDef htim2;
-//TIM_HandleTypeDef htim6;
 TIM_HandleTypeDef htim16;
 TIM_HandleTypeDef htim17;
-
 UART_HandleTypeDef huart1;
 DMA_HandleTypeDef hdma_usart1_tx;
 DMA_HandleTypeDef hdma_usart1_rx;
@@ -85,7 +66,6 @@ static void MX_TIM16_Init(void);
 static void MX_TIM17_Init(void);
 /* USER CODE BEGIN PFP */
 float get_millis();
-void delay(uint32_t ms);
 int timeout(uint32_t start_time, uint32_t timeout_period);
 
 /* USER CODE END PFP */
@@ -106,25 +86,16 @@ int main(void)
 	  uint32_t t1 = 0;
 	  uint32_t t2 = 0;
 	  uint32_t t3 = 0;
-	  char str[512] = {0};
+	  char str[UART_TX_BUFFER_SIZE] = {0};
+	  float dest_height = 0;
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
 
   /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
   HAL_Init();
-
-  /* USER CODE BEGIN Init */
-
-  /* USER CODE END Init */
-
   /* Configure the system clock */
   SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-
-  /* USER CODE END SysInit */
-
   /* Initialize all configured peripherals */
   MX_GPIO_Init();
   MX_DMA_Init();
@@ -141,20 +112,18 @@ int main(void)
   esc_init();
   IMU_Init();
 
-  /* USER CODE END 2 */
-
   /* Infinite loop */
   /* USER CODE BEGIN WHILE */
   while (1)
   {
-	  IMU_Read_Accel_Gyro();
 	  uint32_t now = get_us();
 	  // 1 ms loop
 	  if ((uint32_t)(now - t1) >= LOOP1_US)
 	  {
+		  IMU_Read_Accel_Gyro();
+		  IMU_compute_rotation();
+		  //IMU_compute_position();
 	      t1 += LOOP1_US;
-	      IMU_compute_rotation();
-	      IMU_compute_position();
 	  }
 
 	  // 2 ms loop
@@ -164,30 +133,31 @@ int main(void)
 	      euler_flt = quat_to_euler(quat_flt_orientation);
 	      pid_deltatime = pid_deltatime_us() * 0.000001f;
 	      // PID szabályozás a pontos deltatime-mal
-	      float roll_out  = compute_pid(&pid_control_roll,  0, euler_flt.roll,  pid_deltatime);
-	      float pitch_out = compute_pid(&pid_control_pitch, 0, euler_flt.pitch, pid_deltatime);
-	      float yaw_out   = compute_pid(&pid_control_yaw,   0, euler_flt.yaw,   pid_deltatime);
+	      pid_control.Roll  = compute_pid(&pid_control_roll,  0, euler_flt.roll,  pid_deltatime);
+	      pid_control.Pitch = compute_pid(&pid_control_pitch, 0, euler_flt.pitch, pid_deltatime);
+	      pid_control.Yaw   = compute_pid(&pid_control_yaw,   0, euler_flt.yaw,   pid_deltatime);
+	      pid_control.Throttle   = 1075 + compute_pid(&pid_control_pos,   dest_height, position.z,   pid_deltatime);
 
 	      // Mixer és kimenet frissítése
-	      update_motors(1100, roll_out, pitch_out, yaw_out);
+	      update_motors(pid_control.Throttle, pid_control.Roll, pid_control.Pitch, pid_control.Yaw);
 
 	  }
-	  // 1sec loop
+	  // 0.01sec loop
 	  if ((uint32_t)(now - t3) >= LOOP10_mS)
 	  {
 	      t3 += LOOP10_mS;
-	      //sprintf(str, "quat_acc:%f,%f,%f,%f\r\n", quat_acc.x, quat_acc.y, quat_acc.z, quat_acc.w);
-	      //sprintf(str, "$%f,%f,%f\r\n", gyro_flt.x, gyro_flt.y, gyro_flt.z);
-	      //sprintf(str, "quat_gyro:%f,%f,%f,%f\r\n", quat_gyro.x, quat_gyro.y, quat_gyro.z, quat_gyro.w);
-	      //sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-	      sprintf(str, "$%f,%f,%f, pid dt:%f\r\n", euler_flt.pitch, euler_flt.roll, euler_flt.yaw, pid_deltatime);
-	      debug_print(str);
-	      //sprintf(str, "$%f,%f,%f\r\n", gravity_meas.x, gravity_meas.y, gravity_meas.z);
-	      sprintf(str, "%i, %i, %i, %i\r\n", m1,m2,m3,m4);
-	      debug_print(str);
-	      sprintf(str, "Posi:%f, %f, %f\r\n", position.x,position.y,position.z);
-		  debug_print(str);
 
+	      if(dest_height <= 3000){
+	    	  dest_height = dest_height + 2;
+	      }
+
+	      //sprintf(str, "Posi:%f, %f, %f Tht z:%f\r\n", position.x,position.y,position.z, pid_control.Throttle);
+	      //sprintf(str,"Ax:%d Ay:%d Az:%d Gx:%d Gy:%d Gz:%d dt:%f pdt:%f\r\n",(int)accel.x, (int)accel.y, (int)accel.z, (int)gyro.x,  (int)gyro.y,  (int)gyro.z, (float)deltatime, (float)pid_deltatime);
+	      //debug_print(str);
+	      //sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
+	      //debug_print(str);
+	      sprintf(str, "Rotation: %f, %f, %f\r\n", euler_flt.roll, euler_flt.pitch, euler_flt.yaw);
+	      debug_print(str);
 	  }
 
   }
@@ -602,7 +572,7 @@ static void MX_USART1_UART_Init(void)
 
   /* USER CODE END USART1_Init 1 */
   huart1.Instance = USART1;
-  huart1.Init.BaudRate = 115200;
+  huart1.Init.BaudRate = 921600;
   huart1.Init.WordLength = UART_WORDLENGTH_8B;
   huart1.Init.StopBits = UART_STOPBITS_1;
   huart1.Init.Parity = UART_PARITY_NONE;

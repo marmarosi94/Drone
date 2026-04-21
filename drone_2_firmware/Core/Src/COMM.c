@@ -11,7 +11,6 @@ char uart1_rxBuffer[UART_RX_BUFFER_SIZE];  // Receive buffer (if needed)
 volatile uint16_t txWriteIndex = 0;
 volatile uint16_t txReadIndex = 0;
 volatile uint8_t txBusy = 0;
-char str_tmp[UART_TX_BUFFER_SIZE] = {0};
 
 uint8_t i2c1_txBuffer[I2C_TX_BUFFER_SIZE];
 uint8_t i2c1_rxBuffer[I2C_RX_BUFFER_SIZE];

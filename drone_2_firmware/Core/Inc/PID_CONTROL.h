@@ -22,6 +22,7 @@ typedef struct {
 extern PID_Axis pid_control_roll;
 extern PID_Axis pid_control_pitch;
 extern PID_Axis pid_control_yaw;
+extern PID_Axis pid_control_pos;
 
 extern uint16_t m1; // M1: Jobb-Hátul
 extern uint16_t m2; // M2: Jobb-Elöl

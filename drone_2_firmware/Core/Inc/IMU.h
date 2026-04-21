@@ -11,6 +11,7 @@
 //#include "main.h"
 #include "COMM.h"
 #include "Math.h"
+
 	#define IMU_I2C_ADDRESS 0xD0 // Example I2C address of the IMU (MPU6050) - 7-bit: 0x68
 	// Registers for configuration
 	#define PWR_MGMT_1_REG  0x6B
@@ -28,12 +29,19 @@
 																					2 ±8g 4096 LSB/g
 																					3 ±16g 2048 LSB/g*/
 	// Complementary Filter konstansok
-	#define ALPHA 0.9f
-	#define BETA  0.1f
-	#define MAHONEY_KP  2048   // 0.5 in Q12 (Proportional: how fast it reacts)
-	#define MAHONEY_KI  40     // 0.01 in Q12 (Integral: how fast it "learns" bias)
+	#define BETA  1.0f
 	#define M_RAD2DEG 57.295779513f
 	extern char str[256];
+
+	typedef enum {
+	    IMU_DATA_NOT_READY = 0x00,
+	    IMU_DATA_READY     = 0x01  // Bit 0 of Register 0x3A
+	} IMU_Data_rdy;
+
+	typedef struct {
+		IMU_Data_rdy status;       // Register 0x3A (contains Data Ready bit)
+	    uint8_t imu_data[14]; // Registers 0x3B to 0x48
+	} Imu_raw_data_t;
 
     typedef struct {
         float x;
@@ -54,43 +62,47 @@
         float w;
     } quaternion;
 
-
-	extern int bias_sample_cnt;
+    typedef struct {
+        float Roll;
+        float Pitch;
+        float Yaw;
+        float Throttle;
+    }Control_t;
 
     // Accelerometer
+	extern Imu_raw_data_t imu_raw;
     extern Vector3 accel;
     extern Vector3 g_ref;
     extern Vector3 gravity_meas;
     extern quaternion quat_flt_orientation;
-    extern quaternion quat_acc;
     // Gyroscope
     extern Vector3 gyro;
-    extern Vector3 gyro_flt;
     extern Vector3 gyro_Bias;
     extern Vector3 gyro_Sample;
-    extern Vector3 gyro_meas;
+    extern Vector3 gyro_frame;
     extern quaternion quat_gyro;
     extern quaternion quat_delta;
+	extern int bias_sample_cnt;
     extern euler_float euler_flt;
-
-    euler_float quat_to_euler(quaternion );
-    quaternion quaternion_multiply(quaternion q, quaternion r);
-    quaternion quaternion_normalize(quaternion q);
-    extern Vector3 position;
+    extern Control_t pid_control;
     extern Vector3 velocity;
-
-    float vector3_dot(Vector3 a, Vector3 b);
-    Vector3 vector3_cross(Vector3 a, Vector3 b);
-    Vector3 vector3_normalize(Vector3 v);
+    extern Vector3 position;
 
     void IMU_Init(void);
     void IMU_Read_Accel_Gyro(void);
+    void IMU_StartRead_Accel_Gyro();
     void IMU_Config_Fast_Mode(void);
     void IMU_Verify_Config();
     void IMU_compute_rotation();
     void IMU_compute_position();
     void IMU_gyro_scale();
     HAL_StatusTypeDef Wait_For_I2C_Complete(uint32_t timeout_ms);
-
+    float vector3_dot(Vector3 a, Vector3 b);
+    Vector3 vector3_cross(Vector3 a, Vector3 b);
+    Vector3 vector3_normalize(Vector3 v);
+    float vector3_length(Vector3 v);
+    quaternion quaternion_multiply(quaternion q, quaternion r);
+    quaternion quaternion_normalize(quaternion q);
+    euler_float quat_to_euler(quaternion );
 
 #endif /* INC_IMU_H_ */
