@@ -65,7 +65,7 @@ static void MX_TIM3_Init(void);
 static void MX_TIM16_Init(void);
 static void MX_TIM17_Init(void);
 /* USER CODE BEGIN PFP */
-float get_millis();
+uint32_t get_millis();
 int timeout(uint32_t start_time, uint32_t timeout_period);
 
 /* USER CODE END PFP */
@@ -108,56 +108,64 @@ int main(void)
   MX_TIM1_Init();
   MX_TIM16_Init();
   /* USER CODE BEGIN 2 */
-  HAL_TIM_Base_Start(&htim2);
   esc_init();
+  HAL_TIM_Base_Start(&htim2);	//Start timer for inits
   IMU_Init();
-
-  /* Infinite loop */
+  PID_Init();
+  IMU_Calib();
+  deltatime = imu_deltatime_us() * 1e-6f;	//First sample t0 point
+  pid_control.Throttle = 1050;
   /* USER CODE BEGIN WHILE */
   while (1)
   {
 	  uint32_t now = get_us();
-	  // 1 ms loop
-	  if ((uint32_t)(now - t1) >= LOOP1_US)
-	  {
-		  IMU_Read_Accel_Gyro();
-		  IMU_compute_rotation();
-		  //IMU_compute_position();
+	  if ((uint32_t)(now - t1) >= LOOP1_US) {
+	      if(dma_read_complete == I2C_COMPLETE) {
+	          if(imu_raw.status & 0x01) {
+	              IMU_Parse_Data();         // Extract the bytes safely
+	              IMU_compute_rotation();   // Run Mahony
+	              //IMU_compute_position();
+	              imu_raw.status = 0;       // Clear status
+	          }
+	          dma_read_complete = I2C_IDLE;
+	      }
+	      IMU_Request_Data();
 	      t1 += LOOP1_US;
 	  }
 
-	  // 2 ms loop
 	  if ((uint32_t)(now - t2) >= LOOP2_US)
 	  {
-	      t2 += LOOP2_US;
-	      euler_flt = quat_to_euler(quat_flt_orientation);
-	      pid_deltatime = pid_deltatime_us() * 0.000001f;
-	      // PID szabályozás a pontos deltatime-mal
-	      pid_control.Roll  = compute_pid(&pid_control_roll,  0, euler_flt.roll,  pid_deltatime);
-	      pid_control.Pitch = compute_pid(&pid_control_pitch, 0, euler_flt.pitch, pid_deltatime);
-	      pid_control.Yaw   = compute_pid(&pid_control_yaw,   0, euler_flt.yaw,   pid_deltatime);
-	      pid_control.Throttle   = 1075 + compute_pid(&pid_control_pos,   dest_height, position.z,   pid_deltatime);
+	      // Calculate how much time ACTUALLY passed since the last PID execution
+		  uint32_t dt_us = now - pid_lasttime;
+		  pid_lasttime = now;
+		  pid_deltatime = (float)dt_us * 0.000001f;
+		  euler_flt = quat_to_euler(quat_flt_orientation);
+
+		  pid_control.Roll  = compute_pid(&pid_roll,  0, euler_flt.pitch, gyro_frame_deg.y, pid_deltatime);		//Axis alignment!!!!
+		  pid_control.Pitch = compute_pid(&pid_pitch, 0, euler_flt.roll,  gyro_frame_deg.x, pid_deltatime);		//Axis alignment!!!!
+		  pid_control.Yaw   = compute_pid(&pid_yaw,   0, euler_flt.yaw,   gyro_frame_deg.z, pid_deltatime);
 
 	      // Mixer és kimenet frissítése
 	      update_motors(pid_control.Throttle, pid_control.Roll, pid_control.Pitch, pid_control.Yaw);
-
+	      //update_motors(1100, 0, 0, 0);
+	      t2 += LOOP2_US;
 	  }
-	  // 0.01sec loop
+
 	  if ((uint32_t)(now - t3) >= LOOP10_mS)
 	  {
-	      t3 += LOOP10_mS;
+		  if(pid_control.Throttle <= 1185)
+		  {
+			  pid_control.Throttle = pid_control.Throttle + 0.05f;
+		  }
 
-	      if(dest_height <= 3000){
-	    	  dest_height = dest_height + 2;
-	      }
-
-	      //sprintf(str, "Posi:%f, %f, %f Tht z:%f\r\n", position.x,position.y,position.z, pid_control.Throttle);
-	      //sprintf(str,"Ax:%d Ay:%d Az:%d Gx:%d Gy:%d Gz:%d dt:%f pdt:%f\r\n",(int)accel.x, (int)accel.y, (int)accel.z, (int)gyro.x,  (int)gyro.y,  (int)gyro.z, (float)deltatime, (float)pid_deltatime);
-	      //debug_print(str);
-	      //sprintf(str, "$%f,%f,%f,%f\r\n", quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z, quat_flt_orientation.w);
-	      //debug_print(str);
+	      sprintf(str, "gyro_frame_deg.x:%f, gyro_frame_deg.y:%f, gyro_frame_deg.z:%f\r\n", gyro_frame_deg.x,gyro_frame_deg.y,gyro_frame_deg.z);
+	      debug_print(str);
 	      sprintf(str, "Rotation: %f, %f, %f\r\n", euler_flt.roll, euler_flt.pitch, euler_flt.yaw);
 	      debug_print(str);
+	      sprintf(str, "pid_control.Throttle:%f, pid_control.Roll:%f, pid_control.Pitch:%f, pid_control.Yaw:%f\r\n", pid_control.Throttle, pid_control.Roll, pid_control.Pitch, pid_control.Yaw);
+	      debug_print(str);
+
+	      t3 += LOOP10_mS;
 	  }
 
   }
@@ -641,17 +649,8 @@ inline uint32_t get_us(void) {
     return __HAL_TIM_GET_COUNTER(&htim2);
 }
 // Function to get the current time in milliseconds
-float get_millis(void) {
-    return (float)__HAL_TIM_GET_COUNTER(&htim2) / 1000;
-}
-
-
-float pid_deltatime_us(void) {
-    uint32_t now = __HAL_TIM_GET_COUNTER(&htim2);
-    // Unsigned subtraction automatically handles the 0xFFFFFFFF -> 0 wrap-around
-    uint32_t dt_us = now - pid_lasttime;
-    pid_lasttime = now;
-    return (float)dt_us;
+uint32_t get_millis(void) {
+    return get_us() / 1000;
 }
 
 float imu_deltatime_us(void) {

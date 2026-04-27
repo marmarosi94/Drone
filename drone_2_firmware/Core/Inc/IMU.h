@@ -23,14 +23,15 @@
 	#define GYRO_SCALE								0.060975f						//	1/16.4
 	#define DEG2RAD 								0.017453f
 	#define BIAS_CALIB_SAMPLE_QTY 					1000
-	#define ACC_LSB 								2048							/*AFS_SEL Full Scale Range LSB Sensitivity
+	#define ACC_LSB 								4096 							/*AFS_SEL Full Scale Range LSB Sensitivity
 																					0 ±2g 16384 LSB/g
 																					1 ±4g 8192 LSB/g
 																					2 ±8g 4096 LSB/g
 																					3 ±16g 2048 LSB/g*/
-	// Complementary Filter konstansok
-	#define BETA  1.0f
-	#define M_RAD2DEG 57.295779513f
+	// MAhony Filter konstansok
+	#define KP 1.0f
+	#define KI 0.005f
+	#define RAD2DEG 57.2958f
 	extern char str[256];
 
 	typedef enum {
@@ -56,10 +57,10 @@
     } euler_float;
 
     typedef struct {
+        float w;
         float x;
         float y;
         float z;
-        float w;
     } quaternion;
 
     typedef struct {
@@ -80,6 +81,7 @@
     extern Vector3 gyro_Bias;
     extern Vector3 gyro_Sample;
     extern Vector3 gyro_frame;
+    extern Vector3 gyro_frame_deg ;
     extern quaternion quat_gyro;
     extern quaternion quat_delta;
 	extern int bias_sample_cnt;
@@ -89,10 +91,12 @@
     extern Vector3 position;
 
     void IMU_Init(void);
-    void IMU_Read_Accel_Gyro(void);
-    void IMU_StartRead_Accel_Gyro();
+    //void IMU_Accel_Gyro(void);
     void IMU_Config_Fast_Mode(void);
     void IMU_Verify_Config();
+    void IMU_Request_Data(void);
+    void IMU_Parse_Data(void);
+    void IMU_Calib();
     void IMU_compute_rotation();
     void IMU_compute_position();
     void IMU_gyro_scale();

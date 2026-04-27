@@ -14,22 +14,31 @@ typedef struct {
     float Kp;
     float Ki;
     float Kd;
+
     float integral;
-    float prevError;
-    float antiWindupLimit; // Opcionális: az integrál tag korlátozására
+    float prevMeasured;      // D-termhez
+
+    float antiWindupLimit;   // integrátor clamp
+    float maxOutput;         // PID kimenet limit
+
+    int firstRun;            // 1 (true), ha a következő futás az első
 } PID_Axis;
 
-extern PID_Axis pid_control_roll;
-extern PID_Axis pid_control_pitch;
-extern PID_Axis pid_control_yaw;
-extern PID_Axis pid_control_pos;
+extern PID_Axis pid_roll;
+extern PID_Axis pid_pitch;
+extern PID_Axis pid_yaw;
+extern PID_Axis pid_pos;
+extern float gyro_x_smooth;
+extern float gyro_y_smooth;
+extern float alpha; // Brutális szűrés (0.1 = 90% múlt, 10% új adat)
 
-extern uint16_t m1; // M1: Jobb-Hátul
-extern uint16_t m2; // M2: Jobb-Elöl
-extern uint16_t m3; // M3: Bal-Hátul
-extern uint16_t m4; // M4: Bal-Elöl
+extern float m1; // M1: Jobb-Hátul
+extern float m2; // M2: Jobb-Elöl
+extern float m3; // M3: Bal-Hátul
+extern float m4; // M4: Bal-Elöl
 
-float compute_pid(PID_Axis *pid, float setpoint, float measured, float dt);
+void PID_Init();
+float compute_pid(PID_Axis *pid, float setpoint, float measured, float gyro_rate, float dt);
 void update_motors(float throttle, float roll_pid, float pitch_pid, float yaw_pid);
 
 #endif /* INC_PID_CONTROL_H_ */

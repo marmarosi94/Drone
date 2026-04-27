@@ -48,20 +48,6 @@ void HAL_I2C_MemTxCpltCallback(I2C_HandleTypeDef *hi2c) {
 	  dma_write_complete = I2C_COMPLETE;
 }
 
-void HAL_I2C_MasterTxCpltCallback(I2C_HandleTypeDef *hi2c) {
-    if (hi2c->Instance == I2C1) {
-    	dma_write_complete = I2C_COMPLETE;
-        // Handle transmit complete (DMA transfer completed)
-    }
-}
-
-void HAL_I2C_MasterRxCpltCallback(I2C_HandleTypeDef *hi2c) {
-    if (hi2c->Instance == I2C1) {
-        // Handle receive complete (DMA transfer completed)
-    	dma_read_complete = I2C_COMPLETE;
-    }
-}
-
 void HAL_I2C_ErrorCallback(I2C_HandleTypeDef *hi2c) {
     if (hi2c->Instance == I2C1) {
         // Handle errors (e.g., NACK, timeouts, etc.)

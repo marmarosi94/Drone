@@ -66,11 +66,13 @@ extern volatile float deltatime;
 extern volatile float pid_deltatime;
 extern volatile uint32_t currenttime;
 extern volatile uint32_t lasttime;
+extern uint8_t imu_data_is_new;
+extern uint8_t  t_calib;
 
 float get_deltatime(void);
 float get_deltatime_us(void);
 float imu_deltatime_us(void);
-float pid_deltatime_us(void);
+uint32_t get_millis();
 uint32_t get_us(void);
 /* USER CODE END Includes */
 
@@ -95,7 +97,6 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-float get_millis(void);
 
 void delay_ms(uint32_t ms);
 int timeout(uint32_t start_time, uint32_t timeout_period);
