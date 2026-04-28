@@ -52,9 +52,9 @@ void PID_Init(void)
     // -------------------------
     // YAW
     // -------------------------
-    pid_yaw.Kp = 0.0f;
-    pid_yaw.Ki = 0.0f;
-    pid_yaw.Kd = 0.4f; //Only D!!
+    pid_yaw.Kp = 1.0f;
+    pid_yaw.Ki = 0.2f;
+    pid_yaw.Kd = 0.4f; //
 
     pid_yaw.integral = 0.0f;
     pid_yaw.prevMeasured = 0.0f;

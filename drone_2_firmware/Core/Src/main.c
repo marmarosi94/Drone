@@ -142,7 +142,7 @@ int main(void)
 
 		  pid_control.Roll  = compute_pid(&pid_roll,  0, euler_flt.roll, 	gyro_frame_deg.y, pid_deltatime);		//Axis alignment!!!!
 		  pid_control.Pitch = compute_pid(&pid_pitch, 0, euler_flt.pitch,  	gyro_frame_deg.x, pid_deltatime);		//Axis alignment!!!!
-		  pid_control.Yaw   = compute_pid(&pid_yaw,   0, 0,   				gyro_frame_deg.z, pid_deltatime);		//only D!
+		  pid_control.Yaw   = compute_pid(&pid_yaw,   0, euler_flt.yaw,   	gyro_frame_deg.z, pid_deltatime);		//
 
 	      // Mixer és kimenet frissítése
 	      update_motors(pid_control.Throttle, pid_control.Roll, pid_control.Pitch, pid_control.Yaw);
