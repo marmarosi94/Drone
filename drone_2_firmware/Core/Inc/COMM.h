@@ -25,8 +25,6 @@ extern volatile uint16_t txWriteIndex;
 extern volatile uint16_t txReadIndex;
 extern volatile uint8_t txBusy;
 
-extern uint8_t i2c1_txBuffer[I2C_TX_BUFFER_SIZE];
-extern uint8_t i2c1_rxBuffer[I2C_RX_BUFFER_SIZE];
 extern I2C_State_t dma_read_complete;
 extern I2C_State_t dma_write_complete;
 

@@ -54,26 +54,18 @@ extern TIM_HandleTypeDef htim2;
 extern TIM_HandleTypeDef htim3;
 extern TIM_HandleTypeDef htim16;
 extern TIM_HandleTypeDef htim17;
-
 extern UART_HandleTypeDef huart1;
 extern DMA_HandleTypeDef hdma_usart1_tx;
 extern DMA_HandleTypeDef hdma_usart1_rx;
 
-extern volatile uint32_t micros;  // Millisecond counter
-extern volatile float millis;  // Millisecond counter
-extern volatile uint32_t timeout_flag;  // Timeout flag for time-based events
 extern volatile float deltatime;
 extern volatile float pid_deltatime;
-extern volatile uint32_t currenttime;
-extern volatile uint32_t lasttime;
-extern uint8_t imu_data_is_new;
 extern uint8_t  t_calib;
 
-float get_deltatime(void);
-float get_deltatime_us(void);
 float imu_deltatime_us(void);
 uint32_t get_millis();
 uint32_t get_us(void);
+void delay_ms(uint32_t ms);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -97,9 +89,6 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
-void delay_ms(uint32_t ms);
-int timeout(uint32_t start_time, uint32_t timeout_period);
 
 /* USER CODE END EFP */
 

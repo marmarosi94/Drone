@@ -10,14 +10,14 @@
 
 void esc_init()
 {
-    // 1. Kényszerítsünk minden PWM kimenetet 0-ra (Low) az elején
-    // Ez biztosítja, hogy az ESC észlelje a jel megindulását
+    // Zero all pwm
+    // Ecs signal
     __HAL_TIM_SET_COMPARE(&htim16, TIM_CHANNEL_1, 0);
     __HAL_TIM_SET_COMPARE(&htim3,  TIM_CHANNEL_1, 0);
     __HAL_TIM_SET_COMPARE(&htim17, TIM_CHANNEL_1, 0);
     __HAL_TIM_SET_COMPARE(&htim1,  TIM_CHANNEL_4, 0);
 
-    // 2. Indítsuk el a timereket 0-s kitöltéssel
+    // Start pwm
     HAL_TIM_PWM_Start(&htim16, TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim3,  TIM_CHANNEL_1);
     HAL_TIM_PWM_Start(&htim17, TIM_CHANNEL_1);
@@ -27,20 +27,19 @@ void esc_init()
     __HAL_TIM_MOE_ENABLE(&htim16);
     __HAL_TIM_MOE_ENABLE(&htim17);
 
-    // 3. Várjunk egy kicsit, hogy az ESC-k is bebootoljanak (tü-tü-tü vége)
     HAL_Delay(1000);
 
-    // 4. Most adjuk ki a stabil 1000-et (vagy 1010-et a biztonság kedvéért)
+    // 1000pwm
     set_all_motors(1000);
 
-    // 5. Adjunk időt az ESC-nek, hogy ráálljon a jelre és élesítsen
+    //Esc config wait
     HAL_Delay(2000);
 
     debug_print("ESC arming sequence complete.\r\n");
 }
 /**
- * @brief Beállítja mind a négy motor sebességét (1000-2000 mikroszekundum)
- * @param throttle: 1000 (leállítva) és 2000 (teljes gáz) közötti érték
+ * @brief Set motor rpms (1000-2000 uS)
+ * @param throttle: between 1000 (stop) and 2000 (full rpm) values
  */
 void set_all_motors(int16_t throttle) {
     if (throttle > 2000) throttle = 2000;

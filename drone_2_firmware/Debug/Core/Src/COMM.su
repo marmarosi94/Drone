@@ -1,8 +1,8 @@
-../Core/Src/COMM.c:22:19:I2C_Write_DMA	32	static
-../Core/Src/COMM.c:30:19:I2C_Read_DMA	32	static
-../Core/Src/COMM.c:39:6:HAL_I2C_MemRxCpltCallback	16	static
-../Core/Src/COMM.c:45:6:HAL_I2C_MemTxCpltCallback	16	static
-../Core/Src/COMM.c:51:6:HAL_I2C_ErrorCallback	16	static
-../Core/Src/COMM.c:57:6:debug_print	16	static
-../Core/Src/COMM.c:61:6:USART1_Transmit_DMA	24	static,ignoring_inline_asm
-../Core/Src/COMM.c:97:6:HAL_UART_TxCpltCallback	24	static
+../Core/Src/COMM.c:20:19:I2C_Write_DMA	32	static
+../Core/Src/COMM.c:28:19:I2C_Read_DMA	32	static
+../Core/Src/COMM.c:37:6:HAL_I2C_MemRxCpltCallback	16	static
+../Core/Src/COMM.c:43:6:HAL_I2C_MemTxCpltCallback	16	static
+../Core/Src/COMM.c:49:6:HAL_I2C_ErrorCallback	16	static
+../Core/Src/COMM.c:55:6:debug_print	16	static
+../Core/Src/COMM.c:59:6:USART1_Transmit_DMA	24	static,ignoring_inline_asm
+../Core/Src/COMM.c:95:6:HAL_UART_TxCpltCallback	24	static

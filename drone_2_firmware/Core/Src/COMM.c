@@ -12,8 +12,6 @@ volatile uint16_t txWriteIndex = 0;
 volatile uint16_t txReadIndex = 0;
 volatile uint8_t txBusy = 0;
 
-uint8_t i2c1_txBuffer[I2C_TX_BUFFER_SIZE];
-uint8_t i2c1_rxBuffer[I2C_RX_BUFFER_SIZE];
 I2C_State_t dma_read_complete = I2C_IDLE;
 I2C_State_t dma_write_complete = I2C_IDLE;
 

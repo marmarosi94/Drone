@@ -83,11 +83,10 @@ int main(void)
 {
 
   /* USER CODE BEGIN 1 */
-	  uint32_t t1 = 0;
-	  uint32_t t2 = 0;
-	  uint32_t t3 = 0;
-	  char str[UART_TX_BUFFER_SIZE] = {0};
-	  float dest_height = 0;
+  uint32_t t1 = 0;
+  uint32_t t2 = 0;
+  uint32_t t3 = 0;
+  char str[UART_TX_BUFFER_SIZE] = {0};
   /* USER CODE END 1 */
 
   /* MCU Configuration--------------------------------------------------------*/
@@ -114,7 +113,7 @@ int main(void)
   PID_Init();
   IMU_Calib();
   deltatime = imu_deltatime_us() * 1e-6f;	//First sample t0 point
-  pid_control.Throttle = 1050;
+  pid_control.Throttle = 1070;
   /* USER CODE BEGIN WHILE */
   while (1)
   {
@@ -141,9 +140,9 @@ int main(void)
 		  pid_deltatime = (float)dt_us * 0.000001f;
 		  euler_flt = quat_to_euler(quat_flt_orientation);
 
-		  pid_control.Roll  = compute_pid(&pid_roll,  0, euler_flt.pitch, gyro_frame_deg.y, pid_deltatime);		//Axis alignment!!!!
-		  pid_control.Pitch = compute_pid(&pid_pitch, 0, euler_flt.roll,  gyro_frame_deg.x, pid_deltatime);		//Axis alignment!!!!
-		  pid_control.Yaw   = compute_pid(&pid_yaw,   0, euler_flt.yaw,   gyro_frame_deg.z, pid_deltatime);
+		  pid_control.Roll  = compute_pid(&pid_roll,  0, euler_flt.roll, 	gyro_frame_deg.y, pid_deltatime);		//Axis alignment!!!!
+		  pid_control.Pitch = compute_pid(&pid_pitch, 0, euler_flt.pitch,  	gyro_frame_deg.x, pid_deltatime);		//Axis alignment!!!!
+		  pid_control.Yaw   = compute_pid(&pid_yaw,   0, 0,   				gyro_frame_deg.z, pid_deltatime);		//only D!
 
 	      // Mixer és kimenet frissítése
 	      update_motors(pid_control.Throttle, pid_control.Roll, pid_control.Pitch, pid_control.Yaw);
@@ -153,17 +152,19 @@ int main(void)
 
 	  if ((uint32_t)(now - t3) >= LOOP10_mS)
 	  {
-		  if(pid_control.Throttle <= 1185)
+		  // Throttle increase for testing
+		  if(pid_control.Throttle <= 1175)
 		  {
 			  pid_control.Throttle = pid_control.Throttle + 0.05f;
 		  }
-
-	      sprintf(str, "gyro_frame_deg.x:%f, gyro_frame_deg.y:%f, gyro_frame_deg.z:%f\r\n", gyro_frame_deg.x,gyro_frame_deg.y,gyro_frame_deg.z);
+		  /*sprintf(str, "quat.w: %.3f, quat.x: %.3f, quat.y: %.3f, quat.z: %.3f\r\n", quat_flt_orientation.w, quat_flt_orientation.x, quat_flt_orientation.y, quat_flt_orientation.z);
+		  debug_print(str);
+	      sprintf(str, "gyro_roll: %.3f, gyro_pitch: %.3f, gyro_yaw: %.3f\r\n", gyro_frame_deg.x, gyro_frame_deg.y, gyro_frame_deg.z);
 	      debug_print(str);
-	      sprintf(str, "Rotation: %f, %f, %f\r\n", euler_flt.roll, euler_flt.pitch, euler_flt.yaw);
+	      sprintf(str, "Roll: %.3f, Pitch: %.3f, Yaw: %.3f\r\n", euler_flt.roll, euler_flt.pitch, euler_flt.yaw);
 	      debug_print(str);
 	      sprintf(str, "pid_control.Throttle:%f, pid_control.Roll:%f, pid_control.Pitch:%f, pid_control.Yaw:%f\r\n", pid_control.Throttle, pid_control.Roll, pid_control.Pitch, pid_control.Yaw);
-	      debug_print(str);
+	      debug_print(str);*/
 
 	      t3 += LOOP10_mS;
 	  }
