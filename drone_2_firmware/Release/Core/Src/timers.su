@@ -1,0 +1,9 @@
+../Core/Inc/timers.h:41:24:get_us	4	static
+../Core/Src/timers.c:35:6:timers_init	8	static
+../Core/Src/timers.c:48:13:MX_TIM1_Init	112	static
+../Core/Src/timers.c:127:13:MX_TIM3_Init	64	static
+../Core/Src/timers.c:180:13:MX_TIM2_Init	24	static
+../Core/Src/timers.c:218:13:MX_TIM16_Init	80	static
+../Core/Src/timers.c:281:13:MX_TIM17_Init	80	static
+../Core/Src/timers.c:339:6:delay_ms	24	static,ignoring_inline_asm
+../Core/Src/timers.c:350:6:delay_us	24	static,ignoring_inline_asm

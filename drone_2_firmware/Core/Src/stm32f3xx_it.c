@@ -301,6 +301,12 @@ void USART1_IRQHandler(void)
   /* USER CODE END USART1_IRQn 1 */
 }
 
+
+
 /* USER CODE BEGIN 1 */
 
+void SPI2_IRQHandler(void)
+{
+	HAL_SPI_IRQHandler(&hspi2);
+}
 /* USER CODE END 1 */

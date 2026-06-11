@@ -1,0 +1,12 @@
+../Core/Inc/timers.h:41:24:get_us	4	static
+../Core/Src/ekf.c:43:6:print_matrix	696	static
+../Core/Src/ekf.c:72:6:vertical_process_noise	40	static
+../Core/Src/ekf.c:93:6:vertical_predict	32	static
+../Core/Src/ekf.c:100:6:vertical_cov_predict	96	static
+../Core/Src/ekf.c:135:6:vertical_update	56	static
+../Core/Src/ekf.c:168:6:horizontal_process_noise	48	static
+../Core/Src/ekf.c:205:6:horizontal_predict	32	static
+../Core/Src/ekf.c:216:6:horizontal_cov_predict	248	static
+../Core/Src/ekf.c:249:6:horizontal_update	184	static
+../Core/Src/ekf.c:302:6:ekf_vertical	16	static
+../Core/Src/ekf.c:323:6:ekf_horzintal	8	static

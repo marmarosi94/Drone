@@ -1,0 +1,13 @@
+../Core/Inc/timers.h:41:24:get_us	4	static
+../Core/Src/TOF.c:41:13:TOF_LoadConfig	16	static
+../Core/Src/TOF.c:49:6:TOF_Init	16	static
+../Core/Src/TOF.c:144:12:TOF_WaitBoot	16	static
+../Core/Src/TOF.c:159:6:TOF_Write8	32	static
+../Core/Src/TOF.c:164:13:TOF_Write16	40	static
+../Core/Src/TOF.c:174:13:TOF_Write32	40	static
+../Core/Src/TOF.c:186:9:TOF_Read8	40	static
+../Core/Src/TOF.c:195:17:TOF_Read16	40	static
+../Core/Src/TOF.c:204:6:TOF_Parse_Status	24	static
+../Core/Src/TOF.c:214:6:TOF_Parse_Distance	16	static
+../Core/Src/TOF.c:222:6:TOF_Update	32	static
+../Core/Src/TOF.c:246:6:vertical_pos	16	static

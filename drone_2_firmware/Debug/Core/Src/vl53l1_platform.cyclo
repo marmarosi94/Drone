@@ -1,0 +1,9 @@
+../Core/Src/vl53l1_platform.c:19:8:VL53L1_WriteMulti	3
+../Core/Src/vl53l1_platform.c:36:8:VL53L1_ReadMulti	3
+../Core/Src/vl53l1_platform.c:51:8:VL53L1_WrByte	2
+../Core/Src/vl53l1_platform.c:69:8:VL53L1_WrWord	2
+../Core/Src/vl53l1_platform.c:83:8:VL53L1_WrDWord	2
+../Core/Src/vl53l1_platform.c:99:8:VL53L1_RdByte	3
+../Core/Src/vl53l1_platform.c:116:8:VL53L1_RdWord	3
+../Core/Src/vl53l1_platform.c:136:8:VL53L1_RdDWord	3
+../Core/Src/vl53l1_platform.c:158:8:VL53L1_WaitMs	1

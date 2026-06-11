@@ -1,0 +1,9 @@
+../Core/Inc/timers.h:41:24:get_us	4	static
+../Core/Src/Optic.c:15:6:PMW3901_Write	24	static
+../Core/Src/Optic.c:31:9:PMW3901_Read	24	static
+../Core/Src/Optic.c:57:9:PMW3901_Init	16	static
+../Core/Src/Optic.c:95:6:PMW3901_SecretSauce	8	static
+../Core/Src/Optic.c:183:6:optical_request_motion_burst	16	static
+../Core/Src/Optic.c:232:6:optical_parse	16	static
+../Core/Src/Optic.c:249:6:horizontal_pos	16	static
+../Core/Src/Optic.c:258:6:FLOW_Update	56	static

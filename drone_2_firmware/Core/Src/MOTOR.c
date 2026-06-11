@@ -5,7 +5,7 @@
  *      Author: balin
  */
 
-#include "MOTOR.h"
+#include "main.h"
 
 
 void esc_init()

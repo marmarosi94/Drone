@@ -28,21 +28,11 @@
 																					1 ±4g 8192 LSB/g
 																					2 ±8g 4096 LSB/g
 																					3 ±16g 2048 LSB/g*/
+	#define IMU_DATA_BURST							0x3B
 	// MAhony Filter konstansok
 	#define KP 1.0f
-	#define KI 0.005f
+	#define KI 0.01f//0.005f
 	#define RAD2DEG 57.2958f
-	extern char str[256];
-
-	typedef enum {
-	    IMU_DATA_NOT_READY = 0x00,
-	    IMU_DATA_READY     = 0x01  	// Bit 0 of Register 0x3A
-	} IMU_Data_rdy;
-
-	typedef struct {
-		IMU_Data_rdy status;       	// Register 0x3A (contains Data Ready bit)
-	    uint8_t imu_data[14]; 		// Registers 0x3B to 0x48
-	} Imu_raw_data_t;
 
     typedef struct {
         float x;
@@ -63,16 +53,21 @@
         float z;
     } quaternion;
 
-    typedef struct {
-        float Roll;
-        float Pitch;
-        float Yaw;
-        float Throttle;
-    }Control_t;
+	typedef struct {
+	    int16_t dx;
+	    int16_t dy;
+	    uint8_t motion;
+	    uint8_t quality;
+	} OpticalFrame_t;
+
+
 
     // Accelerometer
-	extern Imu_raw_data_t imu_raw;
     extern Vector3 accel;
+    extern Vector3 accel_body;
+    extern Vector3 accel_world;
+    extern Vector3 velocity_imu;
+    extern Vector3 position_imu;
     extern Vector3 gravity_meas;
     extern quaternion quat_flt_orientation;
     // Gyroscope
@@ -85,19 +80,16 @@
     extern quaternion quat_delta;
 	extern int bias_sample_cnt;
     extern euler_float euler_flt;
-    extern Control_t pid_control;
-    extern Vector3 velocity;
-    extern Vector3 position;
 
     void IMU_Init(void);
-    //void IMU_Accel_Gyro(void);
     void IMU_Config_Fast_Mode(void);
     void IMU_Verify_Config();
     void IMU_Request_Data(void);
-    void IMU_Parse_Data(void);
+    void IMU_Parse_Data(imu_raw_data_t imu_data_tmp, uint32_t timestamp_tmp);
     void IMU_Calib();
     void IMU_compute_rotation();
-    void IMU_compute_position();
+    void accel_to_wframe(Vector3 accel_body, Vector3 *accel_world);
+
     float vector3_dot(Vector3 a, Vector3 b);
     Vector3 vector3_cross(Vector3 a, Vector3 b);
     Vector3 vector3_normalize(Vector3 v);

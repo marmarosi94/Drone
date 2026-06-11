@@ -10,8 +10,8 @@
 
 #include "main.h"
 
-#define MIN_THROTTLE 1000
-#define MAX_THROTTLE 1500
+#define MIN_THROTTLE 1050
+#define MAX_THROTTLE 1800
 
 
 void esc_init();

@@ -39,33 +39,17 @@ extern "C" {
 #include "COMM.h"
 #include "MOTOR.h"
 #include "PID_CONTROL.h"
+#include "Optic.h"
+#include "timers.h"
+#include "flight.h"
+#include "TOF.h"
+#include "VL53L1X_api.h"
+#include "VL53L1X_calibration.h"
+#include "ekf.h"
 
-#define LOOP1_US 		1000
-#define LOOP2_US 		2000
-#define LOOP10_mS 		10000
-#define LOOP_SEC 		1000000
+extern uint32_t  t_calib;
+extern char str[UART_TX_BUFFER_SIZE];
 
-// Global variables to track time
-extern I2C_HandleTypeDef hi2c1;
-extern DMA_HandleTypeDef hdma_i2c1_tx;
-extern DMA_HandleTypeDef hdma_i2c1_rx;
-extern TIM_HandleTypeDef htim1;
-extern TIM_HandleTypeDef htim2;
-extern TIM_HandleTypeDef htim3;
-extern TIM_HandleTypeDef htim16;
-extern TIM_HandleTypeDef htim17;
-extern UART_HandleTypeDef huart1;
-extern DMA_HandleTypeDef hdma_usart1_tx;
-extern DMA_HandleTypeDef hdma_usart1_rx;
-
-extern volatile float deltatime;
-extern volatile float pid_deltatime;
-extern uint8_t  t_calib;
-
-float imu_deltatime_us(void);
-uint32_t get_millis();
-uint32_t get_us(void);
-void delay_ms(uint32_t ms);
 /* USER CODE END Includes */
 
 /* Exported types ------------------------------------------------------------*/
@@ -80,7 +64,6 @@ void delay_ms(uint32_t ms);
 
 /* Exported macro ------------------------------------------------------------*/
 /* USER CODE BEGIN EM */
-
 /* USER CODE END EM */
 
 void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
@@ -89,7 +72,7 @@ void HAL_TIM_MspPostInit(TIM_HandleTypeDef *htim);
 void Error_Handler(void);
 
 /* USER CODE BEGIN EFP */
-
+void DWT_Init(void);
 /* USER CODE END EFP */
 
 /* Private defines -----------------------------------------------------------*/

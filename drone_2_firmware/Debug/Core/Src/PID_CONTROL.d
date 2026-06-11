@@ -1,6 +1,5 @@
-Core/Src/PID_CONTROL.o: ../Core/Src/PID_CONTROL.c \
- ../Core/Inc/PID_CONTROL.h ../Core/Inc/IMU.h ../Core/Inc/COMM.h \
- ../Core/Inc/main.h ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal.h \
+Core/Src/PID_CONTROL.o: ../Core/Src/PID_CONTROL.c ../Core/Inc/main.h \
+ ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal.h \
  ../Core/Inc/stm32f3xx_hal_conf.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_rcc.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_def.h \
@@ -26,15 +25,18 @@ Core/Src/PID_CONTROL.o: ../Core/Src/PID_CONTROL.c \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_i2c_ex.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_pwr.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_pwr_ex.h \
+ ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_spi.h \
+ ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_spi_ex.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_tim.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_tim_ex.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_uart.h \
  ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_uart_ex.h \
- ../Core/Inc/IMU.h ../Core/Inc/MOTOR.h ../Core/Inc/PID_CONTROL.h \
- ../Core/Inc/MOTOR.h
-../Core/Inc/PID_CONTROL.h:
-../Core/Inc/IMU.h:
-../Core/Inc/COMM.h:
+ ../Core/Inc/IMU.h ../Core/Inc/COMM.h ../Core/Inc/main.h \
+ ../Core/Inc/MOTOR.h ../Core/Inc/PID_CONTROL.h ../Core/Inc/Optic.h \
+ ../Core/Inc/timers.h ../Core/Inc/flight.h ../Core/Inc/TOF.h \
+ ../Core/Inc/VL53L1X_api.h ../Core/Inc/vl53l1_platform.h \
+ ../Core/Inc/vl53l1_types.h ../Core/Inc/VL53L1X_calibration.h \
+ ../Core/Inc/ekf.h
 ../Core/Inc/main.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal.h:
 ../Core/Inc/stm32f3xx_hal_conf.h:
@@ -62,11 +64,23 @@ Core/Src/PID_CONTROL.o: ../Core/Src/PID_CONTROL.c \
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_i2c_ex.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_pwr.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_pwr_ex.h:
+../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_spi.h:
+../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_spi_ex.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_tim.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_tim_ex.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_uart.h:
 ../Drivers/STM32F3xx_HAL_Driver/Inc/stm32f3xx_hal_uart_ex.h:
 ../Core/Inc/IMU.h:
+../Core/Inc/COMM.h:
+../Core/Inc/main.h:
 ../Core/Inc/MOTOR.h:
 ../Core/Inc/PID_CONTROL.h:
-../Core/Inc/MOTOR.h:
+../Core/Inc/Optic.h:
+../Core/Inc/timers.h:
+../Core/Inc/flight.h:
+../Core/Inc/TOF.h:
+../Core/Inc/VL53L1X_api.h:
+../Core/Inc/vl53l1_platform.h:
+../Core/Inc/vl53l1_types.h:
+../Core/Inc/VL53L1X_calibration.h:
+../Core/Inc/ekf.h:

@@ -1,0 +1,15 @@
+../Core/Inc/timers.h:41:24:get_us	1
+../Core/Src/IMU.c:35:6:IMU_Init	5
+../Core/Src/IMU.c:64:6:IMU_Config_Fast_Mode	1
+../Core/Src/IMU.c:95:6:IMU_Verify_Config	5
+../Core/Src/IMU.c:144:6:IMU_Calib	4
+../Core/Src/IMU.c:174:6:IMU_Parse_Data	1
+../Core/Src/IMU.c:189:6:IMU_compute_rotation	2
+../Core/Src/IMU.c:269:6:IMU_compute_position	1
+../Core/Src/IMU.c:287:7:vector3_dot	1
+../Core/Src/IMU.c:292:9:vector3_cross	1
+../Core/Src/IMU.c:301:9:vector3_normalize	2
+../Core/Src/IMU.c:311:7:vector3_length	1
+../Core/Src/IMU.c:314:12:quaternion_multiply	1
+../Core/Src/IMU.c:328:12:quaternion_normalize	2
+../Core/Src/IMU.c:343:13:quat_to_euler	1

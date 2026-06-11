@@ -5,14 +5,17 @@
  *      Author: balin
  */
 
-#include "PID_CONTROL.h"
-#include "IMU.h"
-#include "MOTOR.h"
+#include "main.h"
 
-PID_Axis pid_roll;
-PID_Axis pid_pitch;
-PID_Axis pid_yaw;
-PID_Axis pid_pos;
+PID_t pid_roll;
+PID_t pid_pitch;
+PID_t pid_yaw;
+PID_t pd_height;
+PID_t pd_pos;
+Vector2 target_angles;
+Control_t pid_control = {0};
+Vector3 position = {0};
+Vector3 velocity = {0};
 
 float m1 = 0.0f;
 float m2 = 0.0f;
@@ -24,7 +27,7 @@ void PID_Init(void)
     // -------------------------
     // ROLL
     // -------------------------
-	pid_roll.Kp = 1.0f;
+	pid_roll.Kp = 1.2f;
 	pid_roll.Ki = 0.2f;
 	pid_roll.Kd = 0.3f;
 
@@ -38,7 +41,7 @@ void PID_Init(void)
     // -------------------------
     // PITCH
     // -------------------------
-    pid_pitch.Kp = 1.0f;
+    pid_pitch.Kp = 1.2f;
     pid_pitch.Ki = 0.2f;
     pid_pitch.Kd = 0.3f;
 
@@ -59,27 +62,41 @@ void PID_Init(void)
     pid_yaw.integral = 0.0f;
     pid_yaw.prevMeasured = 0.0f;
 
-    pid_yaw.antiWindupLimit = 50.0f;
-    pid_yaw.maxOutput = 150.0f;
+    pid_yaw.antiWindupLimit = 100.0f;
+    pid_yaw.maxOutput = 50.0f;
     pid_yaw.firstRun = 1;
 
     // -------------------------
-    // POSITION not used
+    // Throttle
     // -------------------------
+    pd_height.Kp = 0.5f;
+    pd_height.Ki = 0.1f;
+    pd_height.Kd = 0.2f; //
 
-    pid_pos.Kp = 0.0f;
-    pid_pos.Ki = 0.0f;
-    pid_pos.Kd = 0.0f;
+    pd_height.integral = 0.0f;
+    pd_height.prevMeasured = 0.0f;
 
-    pid_pos.integral = 0.0f;
-    pid_pos.prevMeasured = 0.0f;
+    pd_height.antiWindupLimit = 5.0f;
+    pd_height.maxOutput = 15.0f;
+    pd_height.firstRun = 1;
 
-    pid_pos.antiWindupLimit = 0.0f;
-    pid_pos.maxOutput = 0.0f;
-    pid_pos.firstRun = 1;
+    // -------------------------
+    // Position
+    // -------------------------
+    pd_pos.Kp = 0.5f;
+    pd_pos.Ki = 0.1f;
+    pd_pos.Kd = 0.2f; //
+
+    pd_pos.integral = 0.0f;
+    pd_pos.prevMeasured = 0.0f;
+
+    pd_pos.antiWindupLimit = 5.0f;
+    pd_pos.maxOutput = 15.0f;
+    pd_pos.firstRun = 1;
+
 }
 
-float compute_pid(PID_Axis *pid, float setpoint, float measured, float gyro_rate, float dt) {
+float compute_pid(PID_t *pid, float setpoint, float measured, float gyro_rate, float dt) {
 
     if (dt <= 0.0f) return 0.0f;
 
@@ -129,14 +146,15 @@ float compute_pid(PID_Axis *pid, float setpoint, float measured, float gyro_rate
     return output_limited;
 }
 
-void update_motors(float throttle, float roll_pid, float pitch_pid, float yaw_pid)
+void update_motors(uint32_t throttle, float roll_pid, float pitch_pid, float yaw_pid)
 {
 	// Motor mapping:
 	    // M1: left-front  (+Roll, +Pitch, +Yaw)
 	    // M3: right-front (-Roll, +Pitch, -Yaw)
 	    // M4: left-rear (+Roll, -Pitch, -Yaw)
 	    // M2: right-rear (-Roll, -Pitch, +Yaw)
-
+		//sprintf(str,"Tht: %.2f\r\n",throttle);
+		//debug_print(str);
 	    m1 = throttle + roll_pid + pitch_pid + yaw_pid;
 	    m3 = throttle - roll_pid + pitch_pid - yaw_pid;
 	    m4 = throttle + roll_pid - pitch_pid - yaw_pid;

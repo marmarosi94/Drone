@@ -4,18 +4,23 @@
  *  Created on: Apr 1, 2026
  *      Author: balin
  */
-#include "IMU.h"
+#include "main.h"
 #include <stdbool.h>
 
 
 // ==== GLOBAL VARIABLE DEFINITIONS ====
 int bias_sample_cnt = 0;
 uint8_t gyro_is_calibrated = 0;
-Imu_raw_data_t imu_raw={0};
-uint8_t  t_calib = 0;
+imu_raw_data_t imu_raw={0};
+uint32_t  t_calib = 0;
+static uint32_t imu_last_timestamp = 0;
 
 // Accelerometer
 Vector3 accel = {0};
+Vector3 accel_body = {0};
+Vector3 accel_world = {0};
+Vector3 velocity_imu = {0};
+Vector3 position_imu = {0};
 Vector3 gyro_Bias = {0};
 Vector3 gyro_Sample = {0};
 Vector3 gyro_frame = {0};
@@ -27,9 +32,6 @@ quaternion quat_gyro = {1,0,0,0};
 quaternion quat_delta = {1,0,0,0};
 quaternion quat_flt_orientation = {0};
 euler_float euler_flt = {0};
-Control_t pid_control = {0};
-Vector3 position = {0};
-Vector3 velocity = {0};
 
 // Function to initialize the IMU
 void IMU_Init(void) {
@@ -140,80 +142,66 @@ void IMU_Verify_Config(void) {
 
     debug_print("--- IMU Verification End ---\r\n");
 }
-void IMU_Request_Data(void){
-    if(dma_read_complete == I2C_IDLE) {
-        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3A, (uint8_t *)&imu_raw, 15);
-    }
-}
-// Function to read accelerometer and gyroscope data
-void IMU_Parse_Data(void){
-    if(dma_read_complete == I2C_IDLE) {
-        I2C_Read_DMA(IMU_I2C_ADDRESS, 0x3A, (uint8_t *)&imu_raw, 15);
-    }
-    if(dma_read_complete == I2C_COMPLETE) {
-			//imu_data[6-7] is Temperature, which is why we skip to [8]
-			accel.x = (int16_t)((imu_raw.imu_data[0] << 8) | imu_raw.imu_data[1]);
-			accel.y = (int16_t)((imu_raw.imu_data[2] << 8) | imu_raw.imu_data[3]);
-			accel.z = (int16_t)((imu_raw.imu_data[4] << 8) | imu_raw.imu_data[5]);
-
-			gyro.x  = (int16_t)((imu_raw.imu_data[8] << 8) | imu_raw.imu_data[9]);
-			gyro.y  = (int16_t)((imu_raw.imu_data[10] << 8) | imu_raw.imu_data[11]);
-			gyro.z  = (int16_t)((imu_raw.imu_data[12] << 8) | imu_raw.imu_data[13]);
-			dma_read_complete = I2C_IDLE;
-    }
-}
 
 void IMU_Calib(){
-	while(1){
-		  uint32_t now = get_us();
-		  if ((uint32_t)(now - t_calib) >= LOOP1_US) {
-		      if(dma_read_complete == I2C_COMPLETE) {
-		          if(imu_raw.status & 0x01) {
-		              IMU_Parse_Data();
-		              if(gyro_is_calibrated == 0){
-		                  gyro_Sample.x += gyro.x;
-		                  gyro_Sample.y += gyro.y;
-		                  gyro_Sample.z += gyro.z;
-		                  bias_sample_cnt++;
+    while(1)
+    {
+        uint32_t now = get_us();
 
-		                  if (BIAS_CALIB_SAMPLE_QTY <= bias_sample_cnt)
-		                      gyro_is_calibrated = 1;
-		              }
+        if ((uint32_t)(now - t_calib) >= LOOP1_CYCLES)
+        {
+        	IMU_Task();
+        	I2C_Task();
+            t_calib += LOOP1_CYCLES;
+        }
+        if(SENSOR_Process())
+        {
+			gyro_Sample.x += gyro.x;
+			gyro_Sample.y += gyro.y;
+			gyro_Sample.z += gyro.z;
+			bias_sample_cnt++;
+        }
+        if (bias_sample_cnt >= BIAS_CALIB_SAMPLE_QTY)
+        {
+            gyro_Bias.x =  (float)gyro_Sample.x / bias_sample_cnt;
+            gyro_Bias.y = (float)gyro_Sample.y / bias_sample_cnt;
+            gyro_Bias.z = (float)gyro_Sample.z / bias_sample_cnt;
+            debug_print("Gyro calibrated!\r\n");
+            return;
+        }
+    }
+}
 
-		              if(gyro_is_calibrated == 1){
-		                  gyro_Bias.x = (float) gyro_Sample.x / bias_sample_cnt;
-		                  gyro_Bias.y = (float) gyro_Sample.y / bias_sample_cnt;
-		                  gyro_Bias.z = (float) gyro_Sample.z / bias_sample_cnt;
-		                  gyro_is_calibrated = 2;
-		              }
-		              if(gyro_is_calibrated == 2){
-		            	  debug_print("Gyro calibrated!\r\n");
-		            	  return;
-		              }
-		              imu_raw.status = 0;       // Clear status
-		          }
-		          dma_read_complete = I2C_IDLE;
-		      }
-		      IMU_Request_Data();
-		      t_calib += LOOP1_US;
-		  }
-	}
+// Function to read accelerometer and gyroscope data
+void IMU_Parse_Data(imu_raw_data_t imu_data_tmp, uint32_t timestamp_tmp){
+
+	accel.x = (int16_t)((imu_data_tmp.imu_data[0] << 8) | imu_data_tmp.imu_data[1]);
+	accel.y = (int16_t)((imu_data_tmp.imu_data[2] << 8) | imu_data_tmp.imu_data[3]);
+	accel.z = (int16_t)((imu_data_tmp.imu_data[4] << 8) | imu_data_tmp.imu_data[5]);
+
+	gyro.x  = (int16_t)((imu_data_tmp.imu_data[8] << 8) | imu_data_tmp.imu_data[9]);
+	gyro.y  = (int16_t)((imu_data_tmp.imu_data[10] << 8) | imu_data_tmp.imu_data[11]);
+	gyro.z  = (int16_t)((imu_data_tmp.imu_data[12] << 8) | imu_data_tmp.imu_data[13]);
+
+    uint32_t dt_cycles = timestamp_tmp - imu_last_timestamp;
+    imu_last_timestamp = timestamp_tmp;
+    imu_deltatime = (float)dt_cycles * INV_CPU_FREQ;
 }
 
 void IMU_compute_rotation() {
 
 	//Accel alignement and raw datas
-	float ax = (float)accel.x / ACC_LSB;
-	float ay = (float)accel.y / ACC_LSB;
-	float az = (float)accel.z / ACC_LSB;
-
+	accel_body.x = (float)accel.y /  ACC_LSB;
+	accel_body.y = (float)accel.x / -ACC_LSB;
+	accel_body.z = (float)accel.z /  ACC_LSB;
+/*
     float ax_vaz =  ay;
     float ay_vaz = -ax;
     float az_vaz =  az;
-
-    gravity_meas.x = ax_vaz;
-    gravity_meas.y = ay_vaz;
-    gravity_meas.z = az_vaz;
+*/
+    gravity_meas.x = accel_body.x;
+    gravity_meas.y = accel_body.y;
+    gravity_meas.z = accel_body.z;
 	gravity_meas = vector3_normalize(gravity_meas);
 
 	//Gyro alignement and raw datas-
@@ -250,11 +238,9 @@ void IMU_compute_rotation() {
 	error.y = gravity_meas.z * gyro_g_ref.x - gravity_meas.x * gyro_g_ref.z;
 	error.z = gravity_meas.x * gyro_g_ref.y - gravity_meas.y * gyro_g_ref.x;
 
-	deltatime = imu_deltatime_us() * 1e-6f;
-
-	gyro_bias_integral.x += error.x * KI * deltatime;
-	gyro_bias_integral.y += error.y * KI * deltatime;
-	gyro_bias_integral.z += error.z * KI * deltatime;
+	gyro_bias_integral.x += error.x * KI * imu_deltatime;
+	gyro_bias_integral.y += error.y * KI * imu_deltatime;
+	gyro_bias_integral.z += error.z * KI * imu_deltatime;
 
 	gyro_frame.x += KP * error.x + gyro_bias_integral.x;
 	gyro_frame.y += KP * error.y + gyro_bias_integral.y;
@@ -262,7 +248,7 @@ void IMU_compute_rotation() {
 
 
 	//Quaternion integration (shortest way)
-	float angle = vector3_length(gyro_frame) * deltatime;
+	float angle = vector3_length(gyro_frame) * imu_deltatime;
 
 	if (angle > 1e-6f) {
 		Vector3 axis = vector3_normalize(gyro_frame);
@@ -282,73 +268,32 @@ void IMU_compute_rotation() {
 	quat_gyro = quat_flt_orientation;
 }
 
-void IMU_compute_position(){
-    //Accelero datas
-    Vector3 acc_body;
-    acc_body.x = accel.x / ACC_LSB;
-    acc_body.y = accel.y / ACC_LSB;
-    acc_body.z = accel.z / ACC_LSB;
-
-    //Axis alignement
-    float tmp;
-
-    tmp = acc_body.x;
-    acc_body.x =  acc_body.y;
-    acc_body.y = -tmp;
-    // z marad
-
-    //Estimated gravity calculation
-    Vector3 g_est;
-
+void accel_to_wframe(Vector3 accel_body, Vector3 *accel_world)
+{
     float qw = quat_flt_orientation.w;
     float qx = quat_flt_orientation.x;
     float qy = quat_flt_orientation.y;
     float qz = quat_flt_orientation.z;
 
-    g_est.x = 2.0f * (qx*qz - qw*qy);
-    g_est.y = 2.0f * (qw*qx + qy*qz);
-    g_est.z = qw*qw - qx*qx - qy*qy + qz*qz;
+    // normalize quaternion
+    float norm = sqrtf(qw*qw + qx*qx + qy*qy + qz*qz);
+    qw/=norm; qx/=norm; qy/=norm; qz/=norm;
 
-    //Gravity compensation
-    Vector3 lin_acc_body;
+    float ax = accel_body.x;
+    float ay = accel_body.y;
+    float az = accel_body.z;
 
-    lin_acc_body.x = acc_body.x - g_est.x;
-    lin_acc_body.y = acc_body.y - g_est.y;
-    lin_acc_body.z = acc_body.z - g_est.z;
+    float ix =  qw * ax + qy * az - qz * ay;
+    float iy =  qw * ay + qz * ax - qx * az;
+    float iz =  qw * az + qx * ay - qy * ax;
+    float iw = -qx * ax - qy * ay - qz * az;
 
-    //Rotation to world orientation
-    Vector3 lin_acc_earth;
+    accel_world->x = ix * qw + iw * -qx + iy * -qz - iz * -qy;
+    accel_world->y = iy * qw + iw * -qy + iz * -qx - ix * -qz;
+    accel_world->z = iz * qw + iw * -qz + ix * -qy - iy * -qx;
 
-    Vector3 q_vec = {qx, qy, qz};
-    Vector3 t = vector3_cross(q_vec, lin_acc_body);
-
-    t.x *= 2.0f;
-    t.y *= 2.0f;
-    t.z *= 2.0f;
-
-    lin_acc_earth.x = lin_acc_body.x + qw * t.x + (qy * t.z - qz * t.y);
-    lin_acc_earth.y = lin_acc_body.y + qw * t.y + (qz * t.x - qx * t.z);
-    lin_acc_earth.z = lin_acc_body.z + qw * t.z + (qx * t.y - qy * t.x);
-
-    //	m/s^2
-    lin_acc_earth.x *= 9.81f;
-    lin_acc_earth.y *= 9.81f;
-    lin_acc_earth.z *= 9.81f;
-
-    //Integration
-    float deadband = 0.1f;
-
-    if (fabs(lin_acc_earth.x) < deadband) lin_acc_earth.x = 0;
-    if (fabs(lin_acc_earth.y) < deadband) lin_acc_earth.y = 0;
-    if (fabs(lin_acc_earth.z) < deadband) lin_acc_earth.z = 0;
-
-    velocity.x += lin_acc_earth.x * deltatime;
-    velocity.y += lin_acc_earth.y * deltatime;
-    velocity.z += lin_acc_earth.z * deltatime;
-
-    position.x += velocity.x * deltatime;
-    position.y += velocity.y * deltatime;
-    position.z += velocity.z * deltatime;
+    // gravity removal (clean version)
+    accel_world->z -= 1.0f;
 }
 
 // Dot Product for vectors
@@ -384,14 +329,12 @@ quaternion quaternion_multiply(quaternion q, quaternion r) {
 
 	// W
 	res.w = q.w * r.w - q.x * r.x - q.y * r.y - q.z * r.z;
-
 	// X
 	res.x = q.w * r.x + q.x * r.w + q.y * r.z - q.z * r.y;
 	// Y
 	res.y = q.w * r.y - q.x * r.z + q.y * r.w + q.z * r.x;
 	// Z
 	res.z = q.w * r.z + q.x * r.y - q.y * r.x + q.z * r.w;
-
 	return res;
 }
 
